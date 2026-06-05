@@ -1,0 +1,112 @@
+# Open SWE Consolidated Setup & Integration Guide
+
+This document provides a comprehensive record of all changes made to enable Open SWE on a local Windows environment with OpenRouter, generic OpenAI-compatible providers, and Jira integration.
+
+---
+
+## 1. Windows Native Compatibility
+
+### Sandbox Path Resolution
+**File:** `agent/utils/sandbox_paths.py`
+**Goal:** Allow the agent to correctly identify its working directory and verify write permissions using Windows `cmd.exe` conventions.
+
+- **Changes:**
+    - Added `import os`.
+    - **`_normalize_path`**: Supports drive letters (e.g., `C:\`) and UNC paths. It also preserves the virtual root `/`.
+    - **`_is_writable_directory`**: Implemented a `cmd.exe` fallback. Since `del "path/to/file"` fails on Windows (forward slashes are seen as switches), we force backslashes and use double quotes.
+    - **`_iter_work_dir_candidates`**: Added `cd` and `echo %cd%` as fallbacks for `pwd`.
+
+### Path Middleware Bypass
+**File:** `agent/integrations/local.py`
+**Goal:** Prevent the filesystem middleware from rejecting absolute Windows paths.
+
+- **Change:** Set `virtual_mode=True` in `LocalShellBackend`.
+- **Snippet:**
+  ```python
+  return LocalShellBackend(
+      root_dir=root_dir,
+      inherit_env=True,
+      virtual_mode=True, # Critical for Windows local dev
+  )
+  ```
+
+---
+
+## 2. Model & Provider Flexibility
+
+### Universal OpenAI Adapter
+**File:** `agent/utils/model.py`
+**Goal:** Support any OpenAI-compatible provider (OpenRouter, OpenCode Zen, etc.).
+
+- **Robust Splitting**: Updated to only split `provider:model` if the prefix is a known LangChain provider (e.g., `openai`, `anthropic`). This fixes colons in model names like `poolside/laguna-m.1:free`.
+- **Custom URL Logic**: If `OPENAI_BASE_URL` is custom, the system now automatically uses the `openai` provider and disables the `use_responses_api` feature which is only supported by official OpenAI servers.
+
+### Global `LLM_MODEL_ID` Override
+**Files:** `agent/server.py`, `agent/reviewer.py`
+**Goal:** Ensure the user's chosen model is used for all agents and sub-agents.
+
+- **Implementation**: Factories now check `os.environ.get("LLM_MODEL_ID")` first. If present, it overrides all other team or profile defaults.
+
+---
+
+## 3. Dynamic GitHub Authentication
+
+### Sandbox-Aware Prompts
+**Files:** `agent/prompt.py`, `agent/reviewer.py`, `agent/webapp.py`, `agent/utils/github_comments.py`, `agent/review_style_analyzer.py`
+**Goal:** Use the real `GH_TOKEN` for local development instead of the production proxy (`GH_TOKEN=dummy`).
+
+- **Dynamic Prefix**: Introduced `{gh_auth_prefix}` into the system prompts.
+- **Logic**:
+  ```python
+  sandbox_type = os.getenv("SANDBOX_TYPE", "langsmith")
+  gh_auth_prefix = "GH_TOKEN=dummy " if sandbox_type == "langsmith" else ""
+  ```
+- **Instructions**: Updated the "Working Environment" section to tell the agent to use `git` or `curl` as fallbacks if the `gh` CLI is missing on the host machine.
+
+---
+
+## 4. Jira Integration
+
+### API & Tools
+**Files:** `agent/utils/jira.py`, `agent/tools/jira_comment.py`, `agent/utils/jira_project_repo_map.py`
+**Goal:** Enable end-to-end Jira support.
+
+- **`jira.py`**: Handles authentication (Basic Auth), issue fetching (ADF to text parsing), and comment posting.
+- **`jira_comment.py`**: A new LangChain tool enabling the agent to reply to Jira tickets.
+- **Mapping**: Added a JSON mapper to link Jira project keys (e.g., `ENG`) to GitHub repos.
+
+### Webhook Handling
+**File:** `agent/webapp.py`
+**Goal:** Securely trigger runs from Jira comments.
+
+- **Signature Fix**: Fixed the verification logic to strip the `sha256=` prefix sent by Jira.
+- **Route**: Added `POST /webhooks/jira` to handle `@openswe` mentions and kick off background tasks.
+
+---
+
+## 5. Allowlist Configuration
+
+### Repository Security
+**Issue:** Webhooks were ignored with "Repository not in allowlist".
+
+- **Guidance:** If you have `ALLOWED_GITHUB_ORGS` or `ALLOWED_GITHUB_REPOS` set in your environment, the repository must match them. For local development, if you want to allow everything, ensure these variables are **completely empty** in your `.env` file.
+
+---
+
+## 6. Rate Limit Handling (429 Errors)
+
+**Files:** `agent/utils/model.py`, `agent/middleware/model_fallback.py`
+**Goal:** Prevent agent crashes when using free models with tight rate limits.
+
+- **Aggressive Retries:** Increased `DEFAULT_MAX_RETRIES` from 6 to 20. This allows the OpenAI client to retry many more times with exponential backoff.
+- **Backoff Delay:** Added a 5-second sleep in `ModelFallbackMiddleware` specifically for 429 errors to give the API quota time to reset before trying the fallback model.
+
+## 7. Reasoning Parameter Fix (TypeError)
+
+**File:** `agent/utils/model.py`
+**Goal:** Prevent `TypeError: AsyncCompletions.create() got an unexpected keyword argument 'reasoning'` when using non-reasoning models or 3rd party providers.
+
+- **Selective Reasoning:** Updated `provider_model_kwargs` to only include the `reasoning` parameter for known OpenAI o-series models (`o1`, `o3`). This ensures that standard models like `gpt-4o` and OpenAI-compatible providers (OpenCode Zen, etc.) are not passed experimental arguments they don't support.
+
+---
+*Documented for future reference. Setup verified working as of June 1, 2026.*
