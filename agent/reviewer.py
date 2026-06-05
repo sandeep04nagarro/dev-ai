@@ -16,6 +16,7 @@ agent for code review only:
 # ruff: noqa: E402
 
 import logging
+import os
 import re
 import warnings
 
@@ -55,6 +56,7 @@ from .tools import (
     add_finding,
     fetch_url,
     http_request,
+    jira_comment,
     list_findings,
     publish_review,
     reply_to_finding_thread,
@@ -70,24 +72,24 @@ from .utils.sandbox_paths import aresolve_sandbox_work_dir
 
 REVIEWER_PROMPT_TEMPLATE = """You are a specialized code reviewer agent. Your job is to review one GitHub PR and publish a single review.
 
-Sandbox: `{working_dir}`. Invoke `gh` as `GH_TOKEN=dummy gh <command>`.
+Sandbox: `{working_dir}`. Invoke `gh` as `{gh_auth_prefix}gh <command>`.
 
 Fetch the diff:
 
 ```
-GH_TOKEN=dummy gh pr diff {pr_number} --repo {repo_owner}/{repo_name}
+{gh_auth_prefix}gh pr diff {pr_number} --repo {repo_owner}/{repo_name}
 ```
 
 Re-review (user message says "A new commit has been pushed"):
 
 ```
-GH_TOKEN=dummy gh api repos/{repo_owner}/{repo_name}/compare/<last_reviewed_sha>...<head_sha> -H "Accept: application/vnd.github.v3.diff"
+{gh_auth_prefix}gh api repos/{{repo_owner}}/{{repo_name}}/compare/<last_reviewed_sha>...<head_sha> -H "Accept: application/vnd.github.v3.diff"
 ```
 
 Clone the repo so you can grep for full file context:
 
 ```
-GH_TOKEN=dummy gh repo clone {repo_owner}/{repo_name} && cd {repo_name} && git checkout <head_sha>
+{gh_auth_prefix}gh repo clone {repo_owner}/{repo_name} && cd {repo_name} && git checkout <head_sha>
 ```
 
 Tools: `add_finding`, `update_finding`, `list_findings`, `publish_review`,
@@ -260,6 +262,7 @@ def _reviewer_system_prompt(
     repo_owner: str,
     repo_name: str,
     pr_number: int | str,
+    gh_auth_prefix: str = "",
     reviewer_eval: bool = False,
     repo_style_prompt: str | None = None,
     agents_md_content: str | None = None,
@@ -269,6 +272,7 @@ def _reviewer_system_prompt(
         repo_owner=repo_owner or "<owner>",
         repo_name=repo_name or "<repo>",
         pr_number=pr_number if pr_number != "" else "<pr_number>",
+        gh_auth_prefix=gh_auth_prefix,
     )
     if reviewer_eval:
         prompt = f"{prompt}\n{REVIEWER_EVAL_PROMPT_SUFFIX}"
@@ -559,7 +563,11 @@ async def get_reviewer_agent(config: RunnableConfig) -> Pregel:
 
     if thread_id is None or not graph_loaded_for_execution(config):
         logger.info("No thread_id or not for execution, returning reviewer agent without sandbox")
-        return create_deep_agent(system_prompt="", tools=[]).with_config(config)
+        return create_deep_agent(
+            model="openai:gpt-4o",
+            system_prompt="",
+            tools=[],
+        ).with_config(config)
 
     github_token: str | None = None
     if config["configurable"].get("source"):
@@ -702,12 +710,22 @@ async def get_reviewer_agent(config: RunnableConfig) -> Pregel:
         subagent_effort = reasoning_effort
     else:
         model_id, reasoning_effort = await get_team_default_model("reviewer")
+        env_model_id = os.environ.get("LLM_MODEL_ID")
+        if env_model_id:
+            model_id = env_model_id
+            logger.info("Using LLM_MODEL_ID environment override: %s", model_id)
+
         logger.info(
             "Using team default reviewer model: model=%s effort=%s",
             model_id,
             reasoning_effort,
         )
+
         subagent_model_id, subagent_effort = await get_team_default_subagent_model("reviewer")
+        if env_model_id:
+            subagent_model_id = env_model_id
+            logger.info("Using LLM_MODEL_ID environment override for subagent: %s", subagent_model_id)
+
         logger.info(
             "Using team default reviewer subagent model: model=%s effort=%s",
             subagent_model_id,
@@ -766,11 +784,19 @@ async def get_reviewer_agent(config: RunnableConfig) -> Pregel:
             )
     del github_token
 
+    # Determine GitHub auth prefix based on sandbox type
+    sandbox_type = os.getenv("SANDBOX_TYPE", "langsmith")
+    if sandbox_type == "langsmith":
+        gh_auth_prefix = "GH_TOKEN=dummy "
+    else:
+        gh_auth_prefix = ""
+
     system_prompt = _reviewer_system_prompt(
         f"{work_dir}/{repo_name}" if repo_name else work_dir,
         repo_owner=repo_owner,
         repo_name=repo_name,
         pr_number=pr_number if isinstance(pr_number, int) else "",
+        gh_auth_prefix=gh_auth_prefix,
         reviewer_eval=reviewer_eval,
         repo_style_prompt=repo_style_prompt,
         agents_md_content=agents_md_content,
@@ -786,6 +812,7 @@ async def get_reviewer_agent(config: RunnableConfig) -> Pregel:
         tools=[
             add_finding,
             update_finding,
+            jira_comment,
             list_findings,
             publish_review,
             resolve_finding_thread,

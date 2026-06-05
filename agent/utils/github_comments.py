@@ -452,6 +452,11 @@ def build_pr_prompt(
     repo_line = ""
     if repo_config:
         repo_line = f"## Repository: {repo_config.get('owner')}/{repo_config.get('name')}\n\n"
+
+    # Determine GitHub auth prefix based on sandbox type
+    sandbox_type = os.getenv("SANDBOX_TYPE", "langsmith")
+    gh_auth_prefix = "GH_TOKEN=dummy " if sandbox_type == "langsmith" else ""
+
     return (
         "You've been tagged in GitHub PR comments. Please resolve them.\n\n"
         f"{repo_line}"
@@ -459,10 +464,10 @@ def build_pr_prompt(
         f"## Comments:\n{comments_text}\n\n"
         "If code changes are needed:\n"
         "1. Make the changes in the sandbox\n"
-        "2. Push them and open/update a draft PR with `GH_TOKEN=dummy gh` — this is REQUIRED, do NOT skip it\n"
-        "3. Use `GH_TOKEN=dummy gh pr comment` to post a summary on GitHub\n\n"
+        f"2. Push them and open/update a draft PR with `{gh_auth_prefix}gh` — this is REQUIRED, do NOT skip it\n"
+        f"3. Use `{gh_auth_prefix}gh pr comment` to post a summary on GitHub\n\n"
         "If no code changes are needed:\n"
-        "1. Use `GH_TOKEN=dummy gh pr comment` to explain your answer — this is REQUIRED, never end silently\n\n"
+        f"1. Use `{gh_auth_prefix}gh pr comment` to explain your answer — this is REQUIRED, never end silently\n\n"
         "**You MUST always comment on GitHub before finishing — whether or not changes were made.**"
     )
 

@@ -68,6 +68,8 @@ from .utils.github_comments import (
 from .utils.github_org_membership import INTERNAL_BOT_LOGINS, is_user_active_org_member
 from .utils.github_token import get_github_token_from_thread, invalidate_cached_github_token
 from .utils.github_user_email_map import GITHUB_USER_EMAIL_MAP
+from .utils.jira import fetch_jira_issue_details, post_jira_comment, post_jira_trace_comment
+from .utils.jira_project_repo_map import JIRA_PROJECT_TO_REPO
 from .utils.linear import post_linear_trace_comment
 from .utils.linear_team_repo_map import LINEAR_TEAM_TO_REPO
 from .utils.multimodal import dedupe_urls, extract_image_urls, fetch_image_block
@@ -122,6 +124,7 @@ if DASHBOARD_ALLOWED_ORIGINS:
 app.include_router(dashboard_router)
 
 LINEAR_WEBHOOK_SECRET = os.environ.get("LINEAR_WEBHOOK_SECRET", "")
+JIRA_WEBHOOK_SECRET = os.environ.get("JIRA_WEBHOOK_SECRET", "")
 GITHUB_WEBHOOK_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "")
 SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET", "")
 SLACK_BOT_USER_ID = os.environ.get("SLACK_BOT_USER_ID", "")
@@ -999,20 +1002,27 @@ async def process_slack_pr_review_request(
 
 
 def verify_linear_signature(body: bytes, signature: str, secret: str) -> bool:
-    """Verify the Linear webhook signature.
-
-    Args:
-        body: Raw request body bytes
-        signature: The Linear-Signature header value
-        secret: The webhook signing secret
-
-    Returns:
-        True if signature is valid, False otherwise
-    """
+    """Verify the Linear webhook signature."""
     if not secret:
         logger.warning("LINEAR_WEBHOOK_SECRET is not configured — rejecting webhook request")
         return False
 
+    expected = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+
+    return hmac.compare_digest(expected, signature)
+
+
+def verify_jira_signature(body: bytes, signature: str, secret: str) -> bool:
+    """Verify the Jira webhook signature (X-Hub-Signature)."""
+    if not secret:
+        logger.warning("JIRA_WEBHOOK_SECRET is not configured — rejecting webhook request")
+        return False
+
+    # Remove the sha256= prefix if present
+    if signature.startswith("sha256="):
+        signature = signature[7:]
+
+    # Jira uses HMAC-SHA256, signature is just the hex digest
     expected = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
 
     return hmac.compare_digest(expected, signature)
@@ -1283,6 +1293,88 @@ async def slack_webhook_verify() -> dict[str, str]:
     return {"status": "ok", "message": "Slack webhook endpoint is active"}
 
 
+@app.post("/webhooks/jira")
+async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> dict[str, str]:
+    """Handle Jira Cloud webhooks."""
+    body = await request.body()
+
+    signature = request.headers.get("X-Hub-Signature", "")
+    if not verify_jira_signature(body, signature, JIRA_WEBHOOK_SECRET):
+        logger.warning("Invalid Jira webhook signature")
+        raise HTTPException(status_code=401, detail="Invalid signature")
+
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        logger.exception("Failed to parse Jira webhook JSON")
+        return {"status": "error", "message": "Invalid JSON"}
+
+    webhook_event = payload.get("webhookEvent")
+    if webhook_event != "comment_created":
+        logger.debug("Ignoring Jira webhook: event is %s, not comment_created", webhook_event)
+        return {"status": "ignored", "reason": f"Unsupported event: {webhook_event}"}
+
+    comment = payload.get("comment", {})
+    author = comment.get("author", {})
+    if author.get("accountType") == "app" or author.get("name") == "open-swe":
+        logger.debug("Ignoring Jira webhook: comment is from a bot")
+        return {"status": "ignored", "reason": "Comment is from a bot"}
+
+    comment_body = ""
+    body_data = comment.get("body")
+    if isinstance(body_data, str):
+        comment_body = body_data
+    elif isinstance(body_data, dict):
+        # Extract text from ADF
+        text_parts = []
+        for content in body_data.get("content", []):
+            for inner in content.get("content", []):
+                if inner.get("type") == "text":
+                    text_parts.append(inner.get("text", ""))
+        comment_body = " ".join(text_parts)
+
+    if "@openswe" not in comment_body.lower():
+        logger.debug("Ignoring Jira webhook: comment doesn't mention @openswe")
+        return {"status": "ignored", "reason": "Comment doesn't mention @openswe"}
+
+    issue = payload.get("issue", {})
+    if not issue:
+        logger.debug("Ignoring Jira webhook: no issue data")
+        return {"status": "ignored", "reason": "No issue data"}
+
+    issue_key = issue.get("key", "")
+    project_key = issue_key.split("-")[0] if "-" in issue_key else ""
+    
+    # Resolve repo from comment body first
+    repo_config = extract_repo_from_text(comment_body, default_owner=DEFAULT_REPO_OWNER)
+    
+    # Fallback to JIRA_PROJECT_TO_REPO map
+    if not repo_config and project_key in JIRA_PROJECT_TO_REPO:
+        repo_config = JIRA_PROJECT_TO_REPO[project_key]
+    
+    if not repo_config:
+        logger.warning("Could not resolve repo for Jira issue %s", issue_key)
+        return {"status": "ignored", "reason": "Could not resolve repository mapping"}
+
+    if not _is_repo_allowed(repo_config):
+        logger.warning("Jira trigger for forbidden repo: %s/%s", repo_config["owner"], repo_config["name"])
+        return {"status": "ignored", "reason": "Repository not in allowlist"}
+
+    logger.info("Accepted Jira webhook for issue %s, scheduling background task", issue_key)
+    background_tasks.add_task(process_jira_issue, issue, repo_config, comment_body)
+
+    return {
+        "status": "accepted",
+        "message": f"Processing Jira issue {issue_key} for repo {repo_config['owner']}/{repo_config['name']}",
+    }
+
+
+@app.get("/webhooks/jira")
+async def jira_webhook_verify() -> dict[str, str]:
+    """Verify endpoint for Jira webhook setup."""
+    return {"status": "ok", "message": "Jira webhook endpoint is active"}
+
+
 @app.get("/health")
 async def health_check() -> dict[str, str]:
     """Health check endpoint."""
@@ -1350,6 +1442,10 @@ def build_github_issue_prompt(
     comments_text = _build_github_issue_comments_text(comments)
     sanitized_title = sanitize_github_comment_body(title)
     formatted_body = format_github_comment_body_for_prompt(issue_author or github_login, body)
+    # Determine GitHub auth prefix based on sandbox type
+    sandbox_type = os.getenv("SANDBOX_TYPE", "langsmith")
+    gh_auth_prefix = "GH_TOKEN=dummy " if sandbox_type == "langsmith" else ""
+
     return (
         "Please work on the following GitHub issue:\n\n"
         f"## Repository: {repo_config.get('owner')}/{repo_config.get('name')}\n\n"
@@ -1359,7 +1455,7 @@ def build_github_issue_prompt(
         f"## Description:\n{formatted_body}\n"
         f"{comments_text}\n\n"
         "Please analyze this issue and implement the necessary changes. "
-        "When you need to communicate on GitHub, use `GH_TOKEN=dummy gh issue comment` "
+        f"When you need to communicate on GitHub, use `{gh_auth_prefix}gh issue comment` "
         "with the issue number."
     )
 
@@ -1380,6 +1476,134 @@ def build_github_issue_update_prompt(github_login: str, title: str, body: str) -
         f"Title: {sanitized_title}\n\n"
         f"Description:\n{formatted_body}"
     )
+
+
+def build_jira_issue_prompt(
+    repo_config: dict[str, str],
+    issue_key: str,
+    issue_id: str,
+    title: str,
+    description: str,
+    comments: list[dict[str, Any]],
+    *,
+    user_name: str,
+) -> str:
+    """Build the user prompt for a Jira issue-triggered run."""
+    triggered_by_line = f"## Triggered by: {user_name}\n\n" if user_name else ""
+    
+    comments_text = ""
+    if comments:
+        comments_text = "\n\n## Comments:\n"
+        for comment in comments:
+            author = (comment.get("author") or {}).get("displayName", "User")
+            # Jira API v3 comments might be in ADF; we'll treat them as text for now
+            # if possible, or expect them to be strings.
+            body = comment.get("body")
+            if isinstance(body, dict):
+                # Attempt to extract text from ADF
+                text_parts = []
+                for content in body.get("content", []):
+                    for inner in content.get("content", []):
+                        if inner.get("type") == "text":
+                            text_parts.append(inner.get("text", ""))
+                body = " ".join(text_parts)
+            
+            if not body:
+                continue
+            comments_text += f"\n**{author}:** {body}\n"
+
+    return (
+        "Please work on the following Jira issue:\n\n"
+        f"## Repository: {repo_config.get('owner')}/{repo_config.get('name')}\n\n"
+        f"{triggered_by_line}"
+        f"## Jira Issue: {issue_key} - Issue ID: {issue_id}\n\n"
+        f"## Title: {title}\n\n"
+        f"## Description:\n{description}\n"
+        f"{comments_text}\n\n"
+        "Please analyze this issue and implement the necessary changes. "
+        "When you need to communicate on Jira, use the `jira_comment` tool."
+    )
+
+
+async def process_jira_issue(
+    issue_data: dict[str, Any],
+    repo_config: dict[str, str],
+    triggering_comment: str,
+) -> None:
+    """Process a Jira issue by creating a new LangGraph thread and run."""
+    issue_id = issue_data.get("id", "")
+    issue_key = issue_data.get("key", "")
+    
+    logger.info(
+        "Processing Jira issue %s (%s) for repo %s/%s",
+        issue_key,
+        issue_id,
+        repo_config.get("owner"),
+        repo_config.get("name"),
+    )
+
+    thread_id = generate_thread_id_from_issue(f"jira:{issue_id}")
+
+    full_issue = await fetch_jira_issue_details(issue_key or issue_id)
+    if not full_issue:
+        logger.warning("Failed to fetch full Jira issue details, using webhook data")
+        full_issue = issue_data
+
+    fields = full_issue.get("fields", {})
+    title = fields.get("summary", "No title")
+    description = fields.get("description") or "No description"
+    if isinstance(description, dict):
+        # Extract text from ADF
+        text_parts = []
+        for content in description.get("content", []):
+            for inner in content.get("content", []):
+                if inner.get("type") == "text":
+                    text_parts.append(inner.get("text", ""))
+        description = " ".join(text_parts)
+
+    comments = full_issue.get("comments", [])
+    
+    # Try to find user info
+    creator = fields.get("creator", {})
+    user_name = creator.get("displayName", "")
+    user_email = creator.get("emailAddress", "")
+
+    prompt = build_jira_issue_prompt(
+        repo_config,
+        issue_key,
+        issue_id,
+        title,
+        description,
+        comments,
+        user_name=user_name,
+    )
+
+    configurable: dict[str, Any] = {
+        "repo": repo_config,
+        "jira_issue": {
+            "id": issue_id,
+            "key": issue_key,
+            "title": title,
+        },
+        "user_email": user_email,
+        "source": "jira",
+    }
+
+    thread_active = await is_thread_active(thread_id)
+    if thread_active:
+        logger.info("Thread %s is active, queuing Jira message", thread_id)
+        await queue_message_for_thread(thread_id, prompt)
+    else:
+        logger.info("Creating LangGraph run for thread %s from Jira", thread_id)
+        langgraph_client = get_client(url=LANGGRAPH_URL)
+        await langgraph_client.runs.create(
+            thread_id,
+            "agent",
+            input={"messages": [{"role": "user", "content": prompt}]},
+            config={"configurable": configurable, "metadata": _AGENT_VERSION_METADATA},
+            if_not_exists="create",
+        )
+        await post_jira_trace_comment(issue_key or issue_id, thread_id)
 
 
 async def _trigger_or_queue_run(

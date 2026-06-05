@@ -46,7 +46,7 @@ STYLE_ANALYZER_PROMPT = """You are a code-review style analyst for `{repo_owner}
 
 Sandbox: `{working_dir}`. Use the shell (``execute``) to run GitHub commands.
 
-**Always invoke gh as:** `GH_TOKEN=dummy gh <command>`
+**Always invoke gh as:** `{gh_auth_prefix}gh <command>`
 
 # How to research (required)
 
@@ -54,10 +54,10 @@ Browse historical **merged** PR review feedback until you have catalogued at lea
 **8 substantive human** review comments (not bots). Suggested commands:
 
 ```
-GH_TOKEN=dummy gh pr list --repo {repo_owner}/{repo_name} --state merged --limit 30
-GH_TOKEN=dummy gh api repos/{repo_owner}/{repo_name}/pulls/<PR_NUMBER>/reviews
-GH_TOKEN=dummy gh api repos/{repo_owner}/{repo_name}/pulls/<PR_NUMBER>/comments
-GH_TOKEN=dummy gh api repos/{repo_owner}/{repo_name}/issues/<PR_NUMBER>/comments
+{gh_auth_prefix}gh pr list --repo {{repo_owner}}/{{repo_name}} --state merged --limit 30
+{gh_auth_prefix}gh api repos/{{repo_owner}}/{{repo_name}}/pulls/<PR_NUMBER>/reviews
+{gh_auth_prefix}gh api repos/{{repo_owner}}/{{repo_name}}/pulls/<PR_NUMBER>/comments
+{gh_auth_prefix}gh api repos/{{repo_owner}}/{{repo_name}}/issues/<PR_NUMBER>/comments
 ```
 
 If the first batch is sparse, increase `--limit` or walk older PR numbers. Skip
@@ -109,7 +109,11 @@ async def get_review_style_analyzer(config: RunnableConfig) -> Pregel:
     config["recursion_limit"] = DEFAULT_RECURSION_LIMIT
 
     if thread_id is None or not graph_loaded_for_execution(config):
-        return create_deep_agent(system_prompt="", tools=[]).with_config(config)
+        return create_deep_agent(
+            model="openai:gpt-4o",
+            system_prompt="",
+            tools=[],
+        ).with_config(config)
 
     sandbox_backend = await ensure_sandbox_for_thread(thread_id)
     work_dir = await aresolve_sandbox_work_dir(sandbox_backend)
@@ -123,6 +127,11 @@ async def get_review_style_analyzer(config: RunnableConfig) -> Pregel:
         await _configure_sandbox_github_proxy(sandbox_backend, github_token)
 
     model_id = DEFAULT_LLM_MODEL_ID
+    env_model_id = os.environ.get("LLM_MODEL_ID")
+    if env_model_id:
+        model_id = env_model_id
+        logger.info("Using LLM_MODEL_ID environment override for style analyzer: %s", model_id)
+
     model_kwargs = provider_model_kwargs(
         model_id,
         None,
@@ -130,16 +139,21 @@ async def get_review_style_analyzer(config: RunnableConfig) -> Pregel:
         openai_reasoning_default=DEFAULT_LLM_REASONING,
     )
 
+    # Determine GitHub auth prefix based on sandbox type
+    sandbox_type = os.getenv("SANDBOX_TYPE", "langsmith")
+    gh_auth_prefix = "GH_TOKEN=dummy " if sandbox_type == "langsmith" else ""
+
     system_prompt = STYLE_ANALYZER_PROMPT.format(
         repo_owner=owner or "<owner>",
         repo_name=name or "<repo>",
         working_dir=work_dir,
+        gh_auth_prefix=gh_auth_prefix,
         reviewer_themes=REVIEWER_STYLE_THEMES.strip(),
     )
     user_context = (
         f"Repository: `{full_name}`\n\n"
         f"{samples_text}\n\n"
-        "Research review style with `GH_TOKEN=dummy gh ...` via execute, then call "
+        f"Research review style with `{gh_auth_prefix}gh ...` via execute, then call "
         "`save_review_style_prompt` once you have enough evidence."
     )
     system_prompt = f"{system_prompt}\n\n{user_context}"
