@@ -125,4 +125,5 @@ GITHUB_USER_EMAIL_MAP: dict[str, str] = {
     "steve-langchain": "steve@langchain.dev",
     "SumedhArani": "sumedh@langchain.dev",
     "suraj-langchain": "suraj@langchain.dev",
+    "sandeep04nagarro": "sandeep04@nagarro.com",
 }
