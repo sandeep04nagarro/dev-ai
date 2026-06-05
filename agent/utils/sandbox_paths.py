@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import posixpath
 import shlex
 from collections.abc import Iterable
@@ -65,10 +66,20 @@ def _iter_work_dir_candidates(
             seen.add(candidate)
             yield candidate
 
-    shell_work_dir = _resolve_shell_path(sandbox_backend, "pwd")
-    if shell_work_dir and shell_work_dir not in seen:
-        seen.add(shell_work_dir)
-        yield shell_work_dir
+    # Check for root_dir attribute (common in LocalShellBackend)
+    root_dir = getattr(sandbox_backend, "root_dir", None)
+    if isinstance(root_dir, str):
+        normalized = _normalize_path(root_dir)
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            yield normalized
+
+    # Try various shell commands to get the current directory
+    for cmd in ["pwd", "cd", "echo %cd%"]:
+        shell_work_dir = _resolve_shell_path(sandbox_backend, cmd)
+        if shell_work_dir and shell_work_dir not in seen:
+            seen.add(shell_work_dir)
+            yield shell_work_dir
 
     for candidate in _iter_provider_paths(
         sandbox_backend,
@@ -79,10 +90,11 @@ def _iter_work_dir_candidates(
             seen.add(candidate)
             yield candidate
 
-    shell_home_dir = _resolve_shell_path(sandbox_backend, "printf '%s' \"$HOME\"")
-    if shell_home_dir and shell_home_dir not in seen:
-        seen.add(shell_home_dir)
-        yield shell_home_dir
+    for cmd in ["printf '%s' \"$HOME\"", "echo %USERPROFILE%"]:
+        shell_home_dir = _resolve_shell_path(sandbox_backend, cmd)
+        if shell_home_dir and shell_home_dir not in seen:
+            seen.add(shell_home_dir)
+            yield shell_home_dir
 
 
 def _iter_provider_paths(
@@ -131,8 +143,23 @@ def _normalize_path(raw_path: str | None) -> str | None:
         return None
 
     path = raw_path.strip()
-    if not path or not path.startswith("/"):
+    if not path:
         return None
+
+    # If it's already a virtual POSIX-style root or path, keep it.
+    if path == "/" or path == ".":
+        return path
+
+    # Allow POSIX absolute paths, Windows drive-letter paths, or UNC paths.
+    if not (
+        path.startswith("/")
+        or path.startswith("\\")
+        or (len(path) > 1 and path[1] == ":" and path[0].isalpha())
+    ):
+        return None
+
+    # For internal consistency, we normalize to forward slashes.
+    path = path.replace("\\", "/")
 
     return posixpath.normpath(path)
 
@@ -141,9 +168,31 @@ def _is_writable_directory(
     sandbox_backend: SandboxBackendProtocol,
     directory: str,
 ) -> bool:
+    # 1. Try POSIX-style 'test' (bash/zsh/sh/WSL/Git Bash)
     safe_directory = shlex.quote(directory)
-    result = sandbox_backend.execute(f"test -d {safe_directory} && test -w {safe_directory}")
-    return result.exit_code == 0
+    if sandbox_backend.execute(f"test -d {safe_directory} && test -w {safe_directory}").exit_code == 0:
+        return True
+
+    sentinel_name = f".open_swe_write_test_{os.getpid()}"
+    sentinel_path = posixpath.join(directory, sentinel_name)
+
+    # 2. Try POSIX-style 'touch/rm'
+    safe_sentinel = shlex.quote(sentinel_path)
+    if sandbox_backend.execute(f"touch {safe_sentinel} && rm {safe_sentinel}").exit_code == 0:
+        return True
+
+    # 3. Try Windows cmd.exe style fallback
+    # cmd.exe does NOT understand shlex.quote's single quotes and hates forward slashes in 'del'.
+    # We normalize to backslashes and use double quotes.
+    win_sentinel = sentinel_path.replace("/", "\\")
+    
+    # We use double quotes for cmd.exe. 
+    # Note: del "C:\path\to\file" works, while del "C:/path/to/file" often fails with "Invalid switch".
+    win_cmd = f'echo 1 > "{win_sentinel}" && del "{win_sentinel}"'
+    if sandbox_backend.execute(win_cmd).exit_code == 0:
+        return True
+
+    return False
 
 
 def _cache_work_dir(sandbox_backend: SandboxBackendProtocol, work_dir: str) -> None:
