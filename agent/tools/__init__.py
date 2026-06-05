@@ -1,6 +1,7 @@
 from .add_finding import add_finding
 from .fetch_url import fetch_url
 from .http_request import http_request
+from .jira_comment import jira_comment
 from .linear_comment import linear_comment
 from .linear_create_issue import linear_create_issue
 from .linear_delete_issue import linear_delete_issue
@@ -22,6 +23,7 @@ __all__ = [
     "add_finding",
     "fetch_url",
     "http_request",
+    "jira_comment",
     "linear_comment",
     "linear_create_issue",
     "linear_delete_issue",

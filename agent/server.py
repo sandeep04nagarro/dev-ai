@@ -54,6 +54,7 @@ from .prompt import construct_system_prompt
 from .tools import (
     fetch_url,
     http_request,
+    jira_comment,
     linear_comment,
     linear_create_issue,
     linear_delete_issue,
@@ -368,6 +369,7 @@ async def get_agent(config: RunnableConfig) -> Pregel:
     if thread_id is None or not graph_loaded_for_execution(config):
         logger.info("No thread_id or not for execution, returning agent without sandbox")
         return create_deep_agent(
+            model="openai:gpt-4o",
             system_prompt="",
             tools=[],
         ).with_config(config)
@@ -392,8 +394,17 @@ async def get_agent(config: RunnableConfig) -> Pregel:
         return _get_cached_sandbox_backend(_thread_id)
 
     model_id, profile_effort = await get_team_default_model("agent")
+    env_model_id = os.environ.get("LLM_MODEL_ID")
+    if env_model_id:
+        model_id = env_model_id
+        logger.info("Using LLM_MODEL_ID environment override: %s", model_id)
+
     logger.info("Using team default agent model: model=%s effort=%s", model_id, profile_effort)
     subagent_model_id, subagent_effort = await get_team_default_subagent_model("agent")
+    if env_model_id:
+        subagent_model_id = env_model_id
+        logger.info("Using LLM_MODEL_ID environment override for subagent: %s", subagent_model_id)
+
     logger.info(
         "Using team default agent subagent model: model=%s effort=%s",
         subagent_model_id,
@@ -491,6 +502,7 @@ async def get_agent(config: RunnableConfig) -> Pregel:
             http_request,
             fetch_url,
             web_search,
+            jira_comment,
             linear_comment,
             linear_create_issue,
             linear_delete_issue,
