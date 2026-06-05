@@ -12,6 +12,7 @@ exception type/status code to decide whether to fall over.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -84,9 +85,16 @@ class ModelFallbackMiddleware(AgentMiddleware):
         except Exception as exc:
             if not _should_fallback(exc):
                 raise
+            
+            sleep_time = 5 if isinstance(exc, (anthropic.RateLimitError, openai.RateLimitError)) else 2
             logger.warning(
-                "Primary model failed (%s); falling back to %s",
+                "Primary model failed (%s); retrying with fallback in %ds...",
                 type(exc).__name__,
+                sleep_time,
+            )
+            await asyncio.sleep(sleep_time)
+            logger.info(
+                "Falling back to %s",
                 getattr(self._fallback_model, "model_name", None)
                 or getattr(self._fallback_model, "model", "fallback"),
             )

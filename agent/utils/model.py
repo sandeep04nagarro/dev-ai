@@ -1,12 +1,12 @@
 from typing import Literal, TypedDict, Unpack
+import os
 
 from langchain.chat_models import init_chat_model
 
 OPENAI_RESPONSES_WS_BASE_URL = "wss://api.openai.com/v1"
 
-# Anthropic SDK default is 2; a 529 burst can outlive that. Bump to give the
-# primary provider a fair chance before the fallback middleware kicks in.
-DEFAULT_MAX_RETRIES = 6
+# For free models on OpenRouter/OpenCode Zen, we need very aggressive retries.
+DEFAULT_MAX_RETRIES = 20
 
 DEFAULT_LLM_REASONING: "OpenAIReasoning" = {"effort": "medium"}
 
@@ -37,15 +37,65 @@ class ModelKwargs(TypedDict, total=False):
 _ANTHROPIC_EFFORTS: set[AnthropicEffort] = {"low", "medium", "high", "xhigh", "max"}
 
 
+_KNOWN_PROVIDERS = {
+    "anthropic",
+    "anthropic_bedrock",
+    "azure_ai",
+    "azure_openai",
+    "baseten",
+    "bedrock",
+    "bedrock_converse",
+    "cohere",
+    "deepseek",
+    "fireworks",
+    "google_anthropic_vertex",
+    "google_genai",
+    "google_vertexai",
+    "groq",
+    "huggingface",
+    "ibm",
+    "litellm",
+    "mistralai",
+    "nvidia",
+    "ollama",
+    "openai",
+    "openrouter",
+    "perplexity",
+    "together",
+    "upstage",
+    "xai",
+}
+
+
 def make_model(model_id: str, **kwargs: Unpack[ModelKwargs]):
     model_kwargs: dict[str, object] = kwargs.copy()
     model_kwargs.setdefault("max_retries", DEFAULT_MAX_RETRIES)
 
-    if model_id.startswith("openai:"):
-        model_kwargs["base_url"] = OPENAI_RESPONSES_WS_BASE_URL
-        model_kwargs["use_responses_api"] = True
+    actual_model = model_id
+    model_provider = None
 
-    return init_chat_model(model=model_id, **model_kwargs)
+    if ":" in model_id:
+        prefix, rest = model_id.split(":", 1)
+        if prefix in _KNOWN_PROVIDERS:
+            model_provider = prefix
+            actual_model = rest
+
+    base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    is_custom_openai = base_url != "https://api.openai.com/v1"
+    
+    # If no recognized provider prefix was found, but we have a custom OpenAI base URL,
+    # assume the openai provider (using the custom endpoint as a drop-in replacement).
+    if not model_provider and is_custom_openai:
+        model_provider = "openai"
+        actual_model = model_id
+
+    if model_provider == "openai":
+        model_kwargs["base_url"] = base_url
+        # For non-standard OpenAI endpoints, we usually don't want to use the responses API
+        if is_custom_openai:
+            model_kwargs["use_responses_api"] = False
+
+    return init_chat_model(model=actual_model, model_provider=model_provider, **model_kwargs)
 
 
 def fallback_model_id_for(primary_model_id: str) -> str | None:
@@ -112,6 +162,12 @@ def google_thinking_level_for(profile_effort: str | None) -> GoogleThinkingLevel
     return None
 
 
+def is_openai_reasoning_model(model_id: str) -> bool:
+    """Return True if the model is an OpenAI o-series reasoning model."""
+    model_name = model_id.split(":", 1)[-1]
+    return model_name.startswith(("o1-", "o3-", "o1-preview", "o1-mini"))
+
+
 def provider_model_kwargs(
     model_id: str,
     profile_effort: str | None,
@@ -122,11 +178,15 @@ def provider_model_kwargs(
     """Build provider-specific kwargs for ``make_model`` from a model id and effort."""
     kwargs: ModelKwargs = {"max_tokens": max_tokens}
     if model_id.startswith("openai:"):
-        reasoning = openai_reasoning_for(profile_effort)
-        if reasoning is not None:
-            kwargs["reasoning"] = reasoning
-        elif openai_reasoning_default is not None:
-            kwargs["reasoning"] = openai_reasoning_default
+        # Only add reasoning parameters for models that actually support them (o1, o3).
+        # Passing 'reasoning' to non-reasoning models or 3rd party providers
+        # causes TypeErrors in the underlying OpenAI client.
+        if is_openai_reasoning_model(model_id):
+            reasoning = openai_reasoning_for(profile_effort)
+            if reasoning is not None:
+                kwargs["reasoning"] = reasoning
+            elif openai_reasoning_default is not None:
+                kwargs["reasoning"] = openai_reasoning_default
     elif model_id.startswith("anthropic:"):
         thinking = anthropic_thinking_for(profile_effort)
         if thinking is not None:
