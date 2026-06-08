@@ -125,6 +125,7 @@ app.include_router(dashboard_router)
 
 LINEAR_WEBHOOK_SECRET = os.environ.get("LINEAR_WEBHOOK_SECRET", "")
 JIRA_WEBHOOK_SECRET = os.environ.get("JIRA_WEBHOOK_SECRET", "")
+JIRA_BOT_NAME = os.environ.get("JIRA_BOT_NAME", "Open SWE Agent")
 GITHUB_WEBHOOK_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "")
 SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET", "")
 SLACK_BOT_USER_ID = os.environ.get("SLACK_BOT_USER_ID", "")
@@ -1310,42 +1311,102 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
         return {"status": "error", "message": "Invalid JSON"}
 
     webhook_event = payload.get("webhookEvent")
-    if webhook_event != "comment_created":
-        logger.debug("Ignoring Jira webhook: event is %s, not comment_created", webhook_event)
+    issue = payload.get("issue", {})
+    issue_key = issue.get("key", "")
+    
+    comment_body = ""
+    author_name = "User"
+
+    # ---------------------------------------------------------
+    # SCENARIO A: Triggered by a Comment (@openswe)
+    # ---------------------------------------------------------
+    if webhook_event == "comment_created":
+        comment = payload.get("comment", {})
+        author = comment.get("author", {})
+        if author.get("accountType") == "app" or author.get("name") == "open-swe":
+            logger.debug("Ignoring Jira webhook: comment is from a bot")
+            return {"status": "ignored", "reason": "Comment is from a bot"}
+
+        body_data = comment.get("body")
+        if isinstance(body_data, str):
+            comment_body = body_data
+        elif isinstance(body_data, dict):
+            # Extract text from ADF
+            text_parts = []
+            for content in body_data.get("content", []):
+                for inner in content.get("content", []):
+                    if inner.get("type") == "text":
+                        text_parts.append(inner.get("text", ""))
+            comment_body = " ".join(text_parts)
+
+        if "@openswe" not in comment_body.lower():
+            logger.debug("Ignoring Jira webhook: comment doesn't mention @openswe")
+            return {"status": "ignored", "reason": "Comment doesn't mention @openswe"}
+        
+        author_name = author.get("displayName", "User")
+
+    # ---------------------------------------------------------
+    # SCENARIO B: Triggered by an Assignment
+    # ---------------------------------------------------------
+    elif webhook_event == "jira:issue_updated":
+        changelog_items = payload.get("changelog", {}).get("items", [])
+        is_newly_assigned_to_bot = False
+        
+        for item in changelog_items:
+            if item.get("field") == "assignee":
+                new_assignee = item.get("toString")
+                if new_assignee == JIRA_BOT_NAME:
+                    is_newly_assigned_to_bot = True
+                    break
+        
+        if not is_newly_assigned_to_bot:
+            logger.debug("Ignoring Jira webhook: update was not an assignment to %s", JIRA_BOT_NAME)
+            return {"status": "ignored", "reason": "Update was not an assignment to bot"}
+
+        # Synthesize a prompt since there is no comment
+        comment_body = (
+            f"I have just been assigned to this ticket as {JIRA_BOT_NAME}. "
+            "Please read the full issue description, analyze the requirements, "
+            "and implement the necessary changes."
+        )
+        author_name = "Jira System"
+
+    # ---------------------------------------------------------
+    # SCENARIO C: Assigned during Ticket Creation
+    # ---------------------------------------------------------
+    elif webhook_event == "jira:issue_created":
+        # Look directly at the initial fields, not the changelog
+        assignee_data = issue.get("fields", {}).get("assignee")
+        
+        # If there is no assignee, ignore it
+        if not assignee_data:
+             logger.debug("Ignoring Jira webhook: created without assignee")
+             return {"status": "ignored", "reason": "Created without assignee"}
+             
+        # Check if the initial assignee is the bot
+        if assignee_data.get("displayName") != JIRA_BOT_NAME:
+             logger.debug("Ignoring Jira webhook: created, but assigned to %s", assignee_data.get("displayName"))
+             return {"status": "ignored", "reason": "Created, but assigned to someone else"}
+
+        # Synthesize the prompt
+        comment_body = (
+            f"I have just been assigned to this newly created ticket as {JIRA_BOT_NAME}. "
+            "Please read the full issue description, analyze the requirements, "
+            "and implement the necessary changes."
+        )
+        author_name = "Jira System"
+
+    else:
+        logger.debug("Ignoring Jira webhook: event is %s", webhook_event)
         return {"status": "ignored", "reason": f"Unsupported event: {webhook_event}"}
 
-    comment = payload.get("comment", {})
-    author = comment.get("author", {})
-    if author.get("accountType") == "app" or author.get("name") == "open-swe":
-        logger.debug("Ignoring Jira webhook: comment is from a bot")
-        return {"status": "ignored", "reason": "Comment is from a bot"}
-
-    comment_body = ""
-    body_data = comment.get("body")
-    if isinstance(body_data, str):
-        comment_body = body_data
-    elif isinstance(body_data, dict):
-        # Extract text from ADF
-        text_parts = []
-        for content in body_data.get("content", []):
-            for inner in content.get("content", []):
-                if inner.get("type") == "text":
-                    text_parts.append(inner.get("text", ""))
-        comment_body = " ".join(text_parts)
-
-    if "@openswe" not in comment_body.lower():
-        logger.debug("Ignoring Jira webhook: comment doesn't mention @openswe")
-        return {"status": "ignored", "reason": "Comment doesn't mention @openswe"}
-
-    issue = payload.get("issue", {})
     if not issue:
         logger.debug("Ignoring Jira webhook: no issue data")
         return {"status": "ignored", "reason": "No issue data"}
 
-    issue_key = issue.get("key", "")
     project_key = issue_key.split("-")[0] if "-" in issue_key else ""
     
-    # Resolve repo from comment body first
+    # Resolve repo from comment body (if any) first
     repo_config = extract_repo_from_text(comment_body, default_owner=DEFAULT_REPO_OWNER)
     
     # Fallback to JIRA_PROJECT_TO_REPO map
@@ -1360,13 +1421,12 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
         logger.warning("Jira trigger for forbidden repo: %s/%s", repo_config["owner"], repo_config["name"])
         return {"status": "ignored", "reason": "Repository not in allowlist"}
 
-    logger.info("Accepted Jira webhook for issue %s, scheduling background task", issue_key)
-    author_name = author.get("displayName", "User")
+    logger.info("Accepted Jira webhook for issue %s (%s), scheduling background task", issue_key, webhook_event)
     background_tasks.add_task(process_jira_issue, issue, repo_config, comment_body, author_name)
 
     return {
         "status": "accepted",
-        "message": f"Processing Jira issue {issue_key} for repo {repo_config['owner']}/{repo_config['name']}",
+        "message": f"Processing Jira issue {issue_key} ({webhook_event}) for repo {repo_config['owner']}/{repo_config['name']}",
     }
 
 

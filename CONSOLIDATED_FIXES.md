@@ -117,5 +117,14 @@ This document provides a comprehensive record of all changes made to enable Open
 - **Robust Fallback:** Updated `process_jira_issue` in `agent/webapp.py` to automatically fall back to the webhook payload's data if the API-fetched issue lacks a summary or description. 
 - **Comment Injection:** Updated the webhook handler to pass the author's name and ensures the triggering comment is always included in the `comments` list, even if it hasn't been indexed by the Jira API yet.
 
+## 9. Jira Assignment Triggers
+
+**File:** `agent/webapp.py`
+**Goal:** Enable automatic agent triggering when a task is assigned to the bot.
+
+- **Assignment Detection:** Added logic to `jira_webhook` to handle `jira:issue_updated` events. It scans the changelog for `assignee` changes and triggers the agent if the new assignee matches `JIRA_BOT_NAME`.
+- **Assignment at Creation:** Added logic to handle `jira:issue_created` events. This ensures that if a ticket is assigned to the bot at the moment of creation, the agent triggers immediately without needing a separate update or comment.
+- **Instruction Synthesis:** When triggered by assignment, the system generates a synthetic starting instruction for the agent (e.g., *"I have just been assigned to this ticket..."*), while still correctly fetching the full issue context from the Jira API.
+
 ---
 *Documented for future reference. Setup verified working as of June 1, 2026.*
