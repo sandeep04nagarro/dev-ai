@@ -108,5 +108,14 @@ This document provides a comprehensive record of all changes made to enable Open
 
 - **Selective Reasoning:** Updated `provider_model_kwargs` to only include the `reasoning` parameter for known OpenAI o-series models (`o1`, `o3`). This ensures that standard models like `gpt-4o` and OpenAI-compatible providers (OpenCode Zen, etc.) are not passed experimental arguments they don't support.
 
+## 8. Jira Field Extraction Fix (Missing Title/Description/Comments)
+
+**Files:** `agent/utils/jira.py`, `agent/webapp.py`
+**Goal:** Fix the issue where Jira issue title, description, or the triggering comment were missing from the agent's prompt.
+
+- **API Simplification:** Removed unnecessary `expand` parameters from the Jira issue fetch call in `agent/utils/jira.py` to ensure a standard response structure.
+- **Robust Fallback:** Updated `process_jira_issue` in `agent/webapp.py` to automatically fall back to the webhook payload's data if the API-fetched issue lacks a summary or description. 
+- **Comment Injection:** Updated the webhook handler to pass the author's name and ensures the triggering comment is always included in the `comments` list, even if it hasn't been indexed by the Jira API yet.
+
 ---
 *Documented for future reference. Setup verified working as of June 1, 2026.*

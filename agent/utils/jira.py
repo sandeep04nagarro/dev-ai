@@ -45,12 +45,10 @@ async def fetch_jira_issue_details(issue_id_or_key: str) -> dict[str, Any] | Non
         return None
 
     url = f"{JIRA_BASE_URL}/issue/{issue_id_or_key}"
-    # Use expansion to get comments in the same call if possible, or fetch separately
-    params = {"expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations"}
 
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.get(url, headers=_headers(), params=params)
+            response = await client.get(url, headers=_headers())
             response.raise_for_status()
             issue_data = response.json()
             

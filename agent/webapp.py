@@ -1361,7 +1361,8 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
         return {"status": "ignored", "reason": "Repository not in allowlist"}
 
     logger.info("Accepted Jira webhook for issue %s, scheduling background task", issue_key)
-    background_tasks.add_task(process_jira_issue, issue, repo_config, comment_body)
+    author_name = author.get("displayName", "User")
+    background_tasks.add_task(process_jira_issue, issue, repo_config, comment_body, author_name)
 
     return {
         "status": "accepted",
@@ -1529,6 +1530,7 @@ async def process_jira_issue(
     issue_data: dict[str, Any],
     repo_config: dict[str, str],
     triggering_comment: str,
+    author_name: str,
 ) -> None:
     """Process a Jira issue by creating a new LangGraph thread and run."""
     issue_id = issue_data.get("id", "")
@@ -1550,8 +1552,11 @@ async def process_jira_issue(
         full_issue = issue_data
 
     fields = full_issue.get("fields", {})
-    title = fields.get("summary", "No title")
-    description = fields.get("description") or "No description"
+    webhook_fields = issue_data.get("fields", {})
+
+    title = fields.get("summary") or webhook_fields.get("summary") or "No title"
+    
+    description = fields.get("description") or webhook_fields.get("description") or "No description"
     if isinstance(description, dict):
         # Extract text from ADF
         text_parts = []
@@ -1563,8 +1568,15 @@ async def process_jira_issue(
 
     comments = full_issue.get("comments", [])
     
+    # Ensure the triggering comment is in the list if it's a new comment event
+    if triggering_comment and not any(c.get("body") == triggering_comment for c in comments):
+        comments.append({
+            "author": {"displayName": author_name},
+            "body": triggering_comment
+        })
+
     # Try to find user info
-    creator = fields.get("creator", {})
+    creator = fields.get("creator") or webhook_fields.get("creator") or {}
     user_name = creator.get("displayName", "")
     user_email = creator.get("emailAddress", "")
 
