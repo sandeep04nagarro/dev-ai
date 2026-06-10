@@ -68,7 +68,7 @@ from .utils.github_comments import (
 from .utils.github_org_membership import INTERNAL_BOT_LOGINS, is_user_active_org_member
 from .utils.github_token import get_github_token_from_thread, invalidate_cached_github_token
 from .utils.github_user_email_map import GITHUB_USER_EMAIL_MAP
-from .utils.jira import fetch_jira_issue_details, post_jira_comment, post_jira_trace_comment
+from .utils.jira import extract_adf_text, fetch_jira_issue_details, post_jira_comment, post_jira_trace_comment
 from .utils.jira_project_repo_map import JIRA_PROJECT_TO_REPO
 from .utils.linear import post_linear_trace_comment
 from .utils.linear_team_repo_map import LINEAR_TEAM_TO_REPO
@@ -1546,6 +1546,7 @@ def build_jira_issue_prompt(
     title: str,
     description: str,
     comments: list[dict[str, Any]],
+    attachments: list[dict[str, Any]],
     *,
     user_name: str,
 ) -> str:
@@ -1557,21 +1558,28 @@ def build_jira_issue_prompt(
         comments_text = "\n\n## Comments:\n"
         for comment in comments:
             author = (comment.get("author") or {}).get("displayName", "User")
-            # Jira API v3 comments might be in ADF; we'll treat them as text for now
-            # if possible, or expect them to be strings.
             body = comment.get("body")
-            if isinstance(body, dict):
-                # Attempt to extract text from ADF
-                text_parts = []
-                for content in body.get("content", []):
-                    for inner in content.get("content", []):
-                        if inner.get("type") == "text":
-                            text_parts.append(inner.get("text", ""))
-                body = " ".join(text_parts)
+            extracted_body = extract_adf_text(body)
             
-            if not body:
+            if not extracted_body:
                 continue
-            comments_text += f"\n**{author}:** {body}\n"
+            comments_text += f"\n**{author}:** {extracted_body}\n"
+
+    attachment_section = ""
+    if attachments:
+        attachment_section = (
+            "## Attachments\n"
+            "This issue contains attachments. Please run the following commands to download them into your workspace before beginning your analysis:\n\n"
+            "```bash\n"
+        )
+        jira_email = os.environ.get("JIRA_EMAIL", "")
+        jira_token = os.environ.get("JIRA_API_TOKEN", "")
+        for att in attachments:
+            url = att.get('content')
+            filename = att.get('filename')
+            if url and filename:
+                attachment_section += f"curl -sSL -u \"{jira_email}:{jira_token}\" -o \"{filename}\" \"{url}\"\n"
+        attachment_section += "```\n\n"
 
     return (
         "Please work on the following Jira issue:\n\n"
@@ -1580,6 +1588,7 @@ def build_jira_issue_prompt(
         f"## Jira Issue: {issue_key} - Issue ID: {issue_id}\n\n"
         f"## Title: {title}\n\n"
         f"## Description:\n{description}\n"
+        f"{attachment_section}"
         f"{comments_text}\n\n"
         "Please analyze this issue and implement the necessary changes. "
         "When you need to communicate on Jira, use the `jira_comment` tool."
@@ -1616,17 +1625,13 @@ async def process_jira_issue(
 
     title = fields.get("summary") or webhook_fields.get("summary") or "No title"
     
-    description = fields.get("description") or webhook_fields.get("description") or "No description"
-    if isinstance(description, dict):
-        # Extract text from ADF
-        text_parts = []
-        for content in description.get("content", []):
-            for inner in content.get("content", []):
-                if inner.get("type") == "text":
-                    text_parts.append(inner.get("text", ""))
-        description = " ".join(text_parts)
+    description = fields.get("description") or webhook_fields.get("description")
+    description = extract_adf_text(description) if description else "No description"
 
     comments = full_issue.get("comments", [])
+    
+    # Extract attachments
+    attachments = fields.get("attachment") or webhook_fields.get("attachment") or []
     
     # Ensure the triggering comment is in the list if it's a new comment event
     if triggering_comment and not any(c.get("body") == triggering_comment for c in comments):
@@ -1647,6 +1652,7 @@ async def process_jira_issue(
         title,
         description,
         comments,
+        attachments,
         user_name=user_name,
     )
 

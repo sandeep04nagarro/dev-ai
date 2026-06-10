@@ -119,3 +119,32 @@ async def post_jira_trace_comment(issue_id_or_key: str, thread_id: str) -> None:
         )
     else:
         await post_jira_comment(issue_id_or_key, "On it!")
+
+
+def extract_adf_text(adf: dict | str | None) -> str:
+    """Recursively extract all text from an Atlassian Document Format (ADF) object.
+
+    Args:
+        adf: The ADF JSON object or a simple string.
+
+    Returns:
+        The extracted plain text.
+    """
+    if isinstance(adf, str):
+        return adf
+    if not isinstance(adf, dict):
+        return ""
+
+    text_parts = []
+
+    # Check if this is a text node
+    if adf.get("type") == "text" and "text" in adf:
+        return adf["text"]
+
+    # Recursively check all children in 'content'
+    for item in adf.get("content", []):
+        text = extract_adf_text(item)
+        if text:
+            text_parts.append(text)
+
+    return " ".join(text_parts).strip()

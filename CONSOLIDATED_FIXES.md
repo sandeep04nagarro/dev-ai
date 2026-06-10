@@ -111,8 +111,9 @@ This document provides a comprehensive record of all changes made to enable Open
 ## 8. Jira Field Extraction Fix (Missing Title/Description/Comments)
 
 **Files:** `agent/utils/jira.py`, `agent/webapp.py`
-**Goal:** Fix the issue where Jira issue title, description, or the triggering comment were missing from the agent's prompt.
+**Goal:** Fix the issue where Jira issue title, description, or the triggering comment were missing from the agent's prompt, especially for formatted comments.
 
+- **Recursive ADF Parsing:** Jira Cloud uses Atlassian Document Format (ADF) which heavily nests text (e.g., inside bullet lists). Added a robust `extract_adf_text` recursive function to reliably parse out all plain text from any ADF structure.
 - **API Simplification:** Removed unnecessary `expand` parameters from the Jira issue fetch call in `agent/utils/jira.py` to ensure a standard response structure.
 - **Robust Fallback:** Updated `process_jira_issue` in `agent/webapp.py` to automatically fall back to the webhook payload's data if the API-fetched issue lacks a summary or description. 
 - **Comment Injection:** Updated the webhook handler to pass the author's name and ensures the triggering comment is always included in the `comments` list, even if it hasn't been indexed by the Jira API yet.
