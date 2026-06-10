@@ -36,6 +36,7 @@ from .server import (
 from .tools.save_review_style import save_review_style_prompt
 from .utils.model import DEFAULT_LLM_REASONING, make_model, provider_model_kwargs
 from .utils.sandbox_paths import aresolve_sandbox_work_dir
+from .utils.tracing import get_langfuse_handler
 from .utils.sandbox_state import unwrap_sandbox_backend
 
 logger = logging.getLogger(__name__)
@@ -157,6 +158,14 @@ async def get_review_style_analyzer(config: RunnableConfig) -> Pregel:
         "`save_review_style_prompt` once you have enough evidence."
     )
     system_prompt = f"{system_prompt}\n\n{user_context}"
+
+    langfuse_handler = get_langfuse_handler()
+    if langfuse_handler:
+        callbacks = config.get("callbacks")
+        if callbacks is None:
+            config["callbacks"] = [langfuse_handler]
+        elif isinstance(callbacks, list):
+            callbacks.append(langfuse_handler)
 
     return create_deep_agent(
         model=make_model(model_id, **model_kwargs),
