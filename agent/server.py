@@ -497,6 +497,9 @@ async def get_agent(config: RunnableConfig) -> Pregel:
         elif isinstance(callbacks, list):
             callbacks.append(langfuse_handler)
 
+    if thread_id:
+        config["metadata"]["langfuse_session_id"] = thread_id
+
     main_model = make_model(model_id, **model_kwargs)
     subagent_model = make_model(subagent_model_id, **subagent_model_kwargs)
     return create_deep_agent(
