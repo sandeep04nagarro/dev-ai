@@ -69,6 +69,7 @@ from .utils.auth import resolve_github_token
 from .utils.github_token import get_github_token_from_thread
 from .utils.model import DEFAULT_LLM_REASONING, make_model, provider_model_kwargs
 from .utils.sandbox_paths import aresolve_sandbox_work_dir
+from .utils.tracing import get_langfuse_handler
 
 REVIEWER_PROMPT_TEMPLATE = """You are a specialized code reviewer agent. Your job is to review one GitHub PR and publish a single review.
 
@@ -803,6 +804,14 @@ async def get_reviewer_agent(config: RunnableConfig) -> Pregel:
     )
     if review_context:
         system_prompt = f"{system_prompt}\n\n{review_context}"
+
+    langfuse_handler = get_langfuse_handler()
+    if langfuse_handler:
+        callbacks = config.get("callbacks")
+        if callbacks is None:
+            config["callbacks"] = [langfuse_handler]
+        elif isinstance(callbacks, list):
+            callbacks.append(langfuse_handler)
 
     reviewer_model = make_model(model_id, **model_kwargs)
     reviewer_subagent_model = make_model(subagent_model_id, **subagent_model_kwargs)

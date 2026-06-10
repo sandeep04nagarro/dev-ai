@@ -25,6 +25,7 @@ dependencies = [
     "langchain-runloop>=0.0.4",
     "exa-py>=2.12.1",
     "langchain-google-genai>=4.2.2",
+    "langfuse>=4.7.1",
 ]
 
 [project.optional-dependencies]
