@@ -1,6 +1,8 @@
 from .check_message_queue import check_message_queue_before_model
 from .ensure_no_empty_msg import ensure_no_empty_msg
 from .exclude_tools import ExcludeToolsMiddleware
+from .callback_metadata_logger import MetadataLoggerHandler
+from .log_langfuse_metadata import log_langfuse_metadata
 from .model_fallback import ModelFallbackMiddleware
 from .notify_step_limit import notify_step_limit_reached
 from .refresh_slack_status import SlackAssistantStatusMiddleware
@@ -19,5 +21,6 @@ __all__ = [
     "SlackAssistantStatusMiddleware",
     "check_message_queue_before_model",
     "ensure_no_empty_msg",
+    "log_langfuse_metadata",
     "notify_step_limit_reached",
 ]

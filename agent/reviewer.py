@@ -813,9 +813,6 @@ async def get_reviewer_agent(config: RunnableConfig) -> Pregel:
         elif isinstance(callbacks, list):
             callbacks.append(langfuse_handler)
 
-    if thread_id:
-        config["metadata"]["langfuse_session_id"] = thread_id
-
     reviewer_model = make_model(model_id, **model_kwargs)
     reviewer_subagent_model = make_model(subagent_model_id, **subagent_model_kwargs)
     return create_deep_agent(

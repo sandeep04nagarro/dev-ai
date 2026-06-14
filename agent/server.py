@@ -40,6 +40,7 @@ from .dashboard.options import DEFAULT_MODEL_ID, SUPPORTED_MODEL_IDS, model_supp
 from .dashboard.team_settings import get_team_default_model, get_team_default_subagent_model
 from .integrations.langsmith import _configure_github_proxy
 from .middleware import (
+    MetadataLoggerHandler,
     ModelFallbackMiddleware,
     SandboxCircuitBreakerMiddleware,
     SanitizeThinkingBlocksMiddleware,
@@ -48,6 +49,7 @@ from .middleware import (
     ToolErrorMiddleware,
     check_message_queue_before_model,
     ensure_no_empty_msg,
+    log_langfuse_metadata,
     notify_step_limit_reached,
 )
 from .prompt import construct_system_prompt
@@ -78,8 +80,8 @@ from .utils.model import (
     provider_model_kwargs,
 )
 from .utils.sandbox import create_sandbox
-from .utils.tracing import get_langfuse_handler
 from .utils.sandbox_paths import aresolve_sandbox_work_dir
+from .utils.tracing import get_langfuse_handler
 
 client = get_client()
 
@@ -489,6 +491,13 @@ async def get_agent(config: RunnableConfig) -> Pregel:
 
     logger.info("Returning agent with sandbox for thread %s", thread_id)
 
+    metadata_logger = MetadataLoggerHandler()
+    callbacks = config.get("callbacks")
+    if callbacks is None:
+        config["callbacks"] = [metadata_logger]
+    elif isinstance(callbacks, list):
+        callbacks.append(metadata_logger)
+
     langfuse_handler = get_langfuse_handler()
     if langfuse_handler:
         callbacks = config.get("callbacks")
@@ -496,9 +505,6 @@ async def get_agent(config: RunnableConfig) -> Pregel:
             config["callbacks"] = [langfuse_handler]
         elif isinstance(callbacks, list):
             callbacks.append(langfuse_handler)
-
-    if thread_id:
-        config["metadata"]["langfuse_session_id"] = thread_id
 
     main_model = make_model(model_id, **model_kwargs)
     subagent_model = make_model(subagent_model_id, **subagent_model_kwargs)
@@ -530,6 +536,7 @@ async def get_agent(config: RunnableConfig) -> Pregel:
         subagents=[_general_purpose_subagent(subagent_model)],
         backend=backend_factory,
         middleware=[
+            log_langfuse_metadata,
             SanitizeToolInputsMiddleware(),
             ModelCallLimitMiddleware(run_limit=MODEL_CALL_RECURSION_LIMIT, exit_behavior="end"),
             ToolErrorMiddleware(),

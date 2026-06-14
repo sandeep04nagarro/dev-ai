@@ -287,11 +287,16 @@ async def _start_agent_run(
         configurable["agent_model_id"] = chosen_model
         configurable["agent_effort"] = chosen_effort
 
+    run_metadata = {
+        **_agent_version_metadata(),
+        "langfuse_session_id": thread_id,
+        "langfuse_user_id": configurable.get("user_email") or configurable.get("github_login", "unknown"),
+    }
     run = await client.runs.create(
         thread_id,
         _ASSISTANT_ID,
         input={"messages": [{"role": "user", "content": prompt}]},
-        config={"configurable": configurable, "metadata": _agent_version_metadata()},
+        config={"configurable": configurable, "metadata": run_metadata},
         if_not_exists="create",
         stream_mode=list(_DASHBOARD_STREAM_MODES),
         stream_resumable=True,
@@ -365,11 +370,16 @@ async def send_dashboard_message(
     if chosen_model and chosen_effort:
         configurable["agent_model_id"] = chosen_model
         configurable["agent_effort"] = chosen_effort
+    run_metadata = {
+        **_agent_version_metadata(),
+        "langfuse_session_id": thread_id,
+        "langfuse_user_id": configurable.get("user_email") or configurable.get("github_login", "unknown"),
+    }
     run = await client.runs.create(
         thread_id,
         _ASSISTANT_ID,
         input={"messages": [{"role": "user", "content": prompt}]},
-        config={"configurable": configurable, "metadata": _agent_version_metadata()},
+        config={"configurable": configurable, "metadata": run_metadata},
         stream_mode=list(_DASHBOARD_STREAM_MODES),
         stream_resumable=True,
     )

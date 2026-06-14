@@ -28,6 +28,15 @@ def get_langfuse_handler() -> object | None:
 
         _langfuse_handler = CallbackHandler()
         logger.info("Langfuse tracing enabled (CallbackHandler)")
+
+        from opentelemetry import trace as otel_trace
+
+        provider = otel_trace.get_tracer_provider()
+        if hasattr(provider, "add_span_processor"):
+            from .tracing_diagnostics import SessionIdDiagnosticProcessor
+
+            provider.add_span_processor(SessionIdDiagnosticProcessor())
+            logger.info("SessionIdDiagnosticProcessor added to tracer provider")
     except Exception as exc:
         logger.warning("Failed to initialize Langfuse handler: %s", exc)
         _langfuse_handler = None
