@@ -19,6 +19,10 @@ class MetadataLoggerHandler(BaseCallbackHandler):
     `propagate_attributes` on *every* callback event so that whichever task
     fires the callback gets the context set *before* the langfuse handler
     reads it (since this handler is added to the callbacks list first).
+
+    Also populates `_AttrsStore` so `LangfuseAttributesProcessor` can inject
+    attributes into spans created before callbacks fire (e.g. @traceable
+    spans) and spans in sub-agents that lack this callback handler.
     """
 
     _pa_entered: bool = False
@@ -38,6 +42,9 @@ class MetadataLoggerHandler(BaseCallbackHandler):
                 self._pa_attrs["trace_name"] = str(trace_name)[:200]
         self._pa_cm = propagate_attributes(**self._pa_attrs)
         self._pa_cm.__enter__()
+        from agent.utils.tracing_diagnostics import _AttrsStore
+
+        _AttrsStore.set(**self._pa_attrs)
 
     def on_chain_start(
         self,
@@ -52,16 +59,6 @@ class MetadataLoggerHandler(BaseCallbackHandler):
     ) -> None:
         md = metadata or {}
         self._ensure_pa(md, run_id)
-        logger.info(
-            "CB on_chain_start run_id=%s parent_run_id=%s "
-            "langfuse_session_id=%s langfuse_user_id=%s "
-            "langfuse_trace_name=%s",
-            run_id,
-            parent_run_id,
-            md.get("langfuse_session_id"),
-            md.get("langfuse_user_id"),
-            md.get("langfuse_trace_name"),
-        )
 
     def on_chat_model_start(
         self,
@@ -76,14 +73,6 @@ class MetadataLoggerHandler(BaseCallbackHandler):
     ) -> None:
         md = metadata or {}
         self._ensure_pa(md, run_id)
-        logger.info(
-            "CB on_chat_model_start run_id=%s parent_run_id=%s "
-            "langfuse_session_id=%s langfuse_user_id=%s",
-            run_id,
-            parent_run_id,
-            md.get("langfuse_session_id"),
-            md.get("langfuse_user_id"),
-        )
 
     def on_llm_start(
         self,
@@ -98,14 +87,6 @@ class MetadataLoggerHandler(BaseCallbackHandler):
     ) -> None:
         md = metadata or {}
         self._ensure_pa(md, run_id)
-        logger.info(
-            "CB on_llm_start run_id=%s parent_run_id=%s "
-            "langfuse_session_id=%s langfuse_user_id=%s",
-            run_id,
-            parent_run_id,
-            md.get("langfuse_session_id"),
-            md.get("langfuse_user_id"),
-        )
 
     def on_tool_start(
         self,
@@ -120,11 +101,3 @@ class MetadataLoggerHandler(BaseCallbackHandler):
     ) -> None:
         md = metadata or {}
         self._ensure_pa(md, run_id)
-        logger.info(
-            "CB on_tool_start run_id=%s parent_run_id=%s "
-            "langfuse_session_id=%s langfuse_user_id=%s",
-            run_id,
-            parent_run_id,
-            md.get("langfuse_session_id"),
-            md.get("langfuse_user_id"),
-        )

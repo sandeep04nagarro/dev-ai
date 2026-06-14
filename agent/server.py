@@ -49,7 +49,6 @@ from .middleware import (
     ToolErrorMiddleware,
     check_message_queue_before_model,
     ensure_no_empty_msg,
-    log_langfuse_metadata,
     notify_step_limit_reached,
 )
 from .prompt import construct_system_prompt
@@ -82,6 +81,7 @@ from .utils.model import (
 from .utils.sandbox import create_sandbox
 from .utils.sandbox_paths import aresolve_sandbox_work_dir
 from .utils.tracing import get_langfuse_handler
+from .utils.tracing_diagnostics import _AttrsStore
 
 client = get_client()
 
@@ -506,6 +506,15 @@ async def get_agent(config: RunnableConfig) -> Pregel:
         elif isinstance(callbacks, list):
             callbacks.append(langfuse_handler)
 
+    metadata = config.get("metadata", {}) or {}
+    _AttrsStore.set(
+        thread_id=thread_id,
+        session_id=metadata.get("langfuse_session_id")
+        or configurable.get("langfuse_session_id", thread_id),
+        user_id=metadata.get("langfuse_user_id") or configurable.get("langfuse_user_id", "unknown"),
+        trace_name=metadata.get("langfuse_trace_name") or configurable.get("langfuse_trace_name"),
+    )
+
     main_model = make_model(model_id, **model_kwargs)
     subagent_model = make_model(subagent_model_id, **subagent_model_kwargs)
     return create_deep_agent(
@@ -536,7 +545,6 @@ async def get_agent(config: RunnableConfig) -> Pregel:
         subagents=[_general_purpose_subagent(subagent_model)],
         backend=backend_factory,
         middleware=[
-            log_langfuse_metadata,
             SanitizeToolInputsMiddleware(),
             ModelCallLimitMiddleware(run_limit=MODEL_CALL_RECURSION_LIMIT, exit_behavior="end"),
             ToolErrorMiddleware(),

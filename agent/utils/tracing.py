@@ -33,10 +33,10 @@ def get_langfuse_handler() -> object | None:
 
         provider = otel_trace.get_tracer_provider()
         if hasattr(provider, "add_span_processor"):
-            from .tracing_diagnostics import SessionIdDiagnosticProcessor
+            from .tracing_diagnostics import LangfuseAttributesProcessor
 
-            provider.add_span_processor(SessionIdDiagnosticProcessor())
-            logger.info("SessionIdDiagnosticProcessor added to tracer provider")
+            provider.add_span_processor(LangfuseAttributesProcessor())
+            logger.info("LangfuseAttributesProcessor added to tracer provider")
     except Exception as exc:
         logger.warning("Failed to initialize Langfuse handler: %s", exc)
         _langfuse_handler = None
