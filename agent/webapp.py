@@ -778,11 +778,16 @@ async def process_linear_issue(  # noqa: PLR0912, PLR0915
     else:
         logger.info("Creating LangGraph run for thread %s", thread_id)
         langgraph_client = get_client(url=LANGGRAPH_URL)
+        run_metadata = {
+            **_AGENT_VERSION_METADATA,
+            "langfuse_session_id": thread_id,
+            "langfuse_user_id": configurable.get("user_email") or configurable.get("github_login", "unknown"),
+        }
         await langgraph_client.runs.create(
             thread_id,
             "agent",
             input={"messages": [{"role": "user", "content": content_blocks}]},
-            config={"configurable": configurable, "metadata": _AGENT_VERSION_METADATA},
+            config={"configurable": configurable, "metadata": run_metadata},
             if_not_exists="create",
         )
         logger.info("LangGraph run created successfully for thread %s", thread_id)
@@ -937,11 +942,16 @@ async def process_slack_mention(event_data: dict[str, Any], repo_config: dict[st
         return
 
     logger.info("Creating Slack LangGraph run for thread %s", thread_id)
+    run_metadata = {
+        **_AGENT_VERSION_METADATA,
+        "langfuse_session_id": thread_id,
+        "langfuse_user_id": configurable.get("user_email") or configurable.get("github_login", "unknown"),
+    }
     run = await langgraph_client.runs.create(
         thread_id,
         "agent",
         input={"messages": [{"role": "user", "content": content_blocks}]},
-        config={"configurable": configurable, "metadata": _AGENT_VERSION_METADATA},
+        config={"configurable": configurable, "metadata": run_metadata},
         if_not_exists="create",
     )
     logger.info(
@@ -1316,6 +1326,7 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
     
     comment_body = ""
     author_name = "User"
+    author_email = ""
 
     # ---------------------------------------------------------
     # SCENARIO A: Triggered by a Comment (@openswe)
@@ -1344,6 +1355,7 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
             return {"status": "ignored", "reason": "Comment doesn't mention @openswe"}
         
         author_name = author.get("displayName", "User")
+        author_email = author.get("emailAddress", "")
 
     # ---------------------------------------------------------
     # SCENARIO B: Triggered by an Assignment
@@ -1422,7 +1434,7 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
         return {"status": "ignored", "reason": "Repository not in allowlist"}
 
     logger.info("Accepted Jira webhook for issue %s (%s), scheduling background task", issue_key, webhook_event)
-    background_tasks.add_task(process_jira_issue, issue, repo_config, comment_body, author_name)
+    background_tasks.add_task(process_jira_issue, issue, repo_config, comment_body, author_name, author_email)
 
     return {
         "status": "accepted",
@@ -1600,6 +1612,7 @@ async def process_jira_issue(
     repo_config: dict[str, str],
     triggering_comment: str,
     author_name: str,
+    author_email: str = "",
 ) -> None:
     """Process a Jira issue by creating a new LangGraph thread and run."""
     issue_id = issue_data.get("id", "")
@@ -1667,21 +1680,36 @@ async def process_jira_issue(
         "source": "jira",
     }
 
+    langgraph_client = get_client(url=LANGGRAPH_URL)
     thread_active = await is_thread_active(thread_id)
     if thread_active:
         logger.info("Thread %s is active, queuing Jira message", thread_id)
         await queue_message_for_thread(thread_id, prompt)
     else:
         logger.info("Creating LangGraph run for thread %s from Jira", thread_id)
-        langgraph_client = get_client(url=LANGGRAPH_URL)
+        run_metadata = {
+            **_AGENT_VERSION_METADATA,
+            "langfuse_session_id": issue_key,
+            "langfuse_trace_name": f"Jira: {issue_key} - {title[:60]}",
+            "langfuse_user_id": author_email or author_name,
+        }
         await langgraph_client.runs.create(
             thread_id,
             "agent",
             input={"messages": [{"role": "user", "content": prompt}]},
-            config={"configurable": configurable, "metadata": _AGENT_VERSION_METADATA},
+            config={"configurable": configurable, "metadata": run_metadata},
             if_not_exists="create",
         )
         await post_jira_trace_comment(issue_key or issue_id, thread_id)
+
+    try:
+        await langgraph_client.threads.update(
+            thread_id=thread_id,
+            metadata={"jira_issue_key": issue_key},
+        )
+        logger.info("Successfully persisted jira_issue_key in thread metadata")
+    except Exception:
+        logger.exception("Failed to persist jira_issue_key in thread metadata")
 
 
 async def _trigger_or_queue_run(
@@ -1702,6 +1730,11 @@ async def _trigger_or_queue_run(
 
     logger.info("Creating LangGraph run for thread %s from GitHub PR comment", thread_id)
     langgraph_client = get_client(url=LANGGRAPH_URL)
+    run_metadata = {
+        **_AGENT_VERSION_METADATA,
+        "langfuse_session_id": thread_id,
+        "langfuse_user_id": github_login or "unknown",
+    }
     await langgraph_client.runs.create(
         thread_id,
         "agent",
@@ -1714,7 +1747,7 @@ async def _trigger_or_queue_run(
                 "repo": repo_config,
                 "pr_number": pr_number,
             },
-            "metadata": _AGENT_VERSION_METADATA,
+            "metadata": run_metadata,
         },
         if_not_exists="create",
     )
@@ -1857,11 +1890,16 @@ async def trigger_pr_review_from_ref(
         return {"success": queued, "queued": queued, "thread_id": thread_id, "pr_url": pr_url}
 
     logger.info("Creating reviewer run for thread %s from %s PR review request", thread_id, source)
+    run_metadata = {
+        **_AGENT_VERSION_METADATA,
+        "langfuse_session_id": thread_id,
+        "langfuse_user_id": configurable.get("github_login", "unknown"),
+    }
     run = await langgraph_client.runs.create(
         thread_id,
         "reviewer",
         input={"messages": [{"role": "user", "content": prompt}]},
-        config={"configurable": configurable, "metadata": _AGENT_VERSION_METADATA},
+        config={"configurable": configurable, "metadata": run_metadata},
         if_not_exists="create",
     )
     await _store_current_reviewer_run_id(thread_id, run)
@@ -2032,11 +2070,16 @@ async def _dispatch_first_review_from_pr_payload(payload: dict[str, Any], *, sou
         return
 
     logger.info("Creating reviewer run for thread %s (source=%s)", thread_id, source)
+    run_metadata = {
+        **_AGENT_VERSION_METADATA,
+        "langfuse_session_id": thread_id,
+        "langfuse_user_id": configurable.get("github_login", "unknown"),
+    }
     run = await langgraph_client.runs.create(
         thread_id,
         "reviewer",
         input={"messages": [{"role": "user", "content": prompt}]},
-        config={"configurable": configurable, "metadata": _AGENT_VERSION_METADATA},
+        config={"configurable": configurable, "metadata": run_metadata},
         if_not_exists="create",
     )
     await _store_current_reviewer_run_id(thread_id, run)
@@ -2446,11 +2489,16 @@ async def process_github_push_event(payload: dict[str, Any]) -> None:
         return
 
     logger.info("Creating push re-review run for thread %s", thread_id)
+    run_metadata = {
+        **_AGENT_VERSION_METADATA,
+        "langfuse_session_id": thread_id,
+        "langfuse_user_id": configurable.get("github_login", "unknown"),
+    }
     run = await langgraph_client.runs.create(
         thread_id,
         "reviewer",
         input={"messages": [{"role": "user", "content": re_review_prompt}]},
-        config={"configurable": configurable, "metadata": _AGENT_VERSION_METADATA},
+        config={"configurable": configurable, "metadata": run_metadata},
         if_not_exists="create",
     )
     await _store_current_reviewer_run_id(thread_id, run)
@@ -2801,11 +2849,16 @@ async def process_github_review_finding_reply(payload: dict[str, Any]) -> None:
         return
 
     langgraph_client = get_client(url=LANGGRAPH_URL)
+    run_metadata = {
+        **_AGENT_VERSION_METADATA,
+        "langfuse_session_id": thread_id,
+        "langfuse_user_id": configurable.get("github_login", "unknown"),
+    }
     run = await langgraph_client.runs.create(
         thread_id,
         "reviewer",
         input={"messages": [{"role": "user", "content": prompt}]},
-        config={"configurable": configurable, "metadata": _AGENT_VERSION_METADATA},
+        config={"configurable": configurable, "metadata": run_metadata},
         if_not_exists="create",
     )
     await _store_current_reviewer_run_id(thread_id, run)
@@ -2945,11 +2998,16 @@ async def process_github_issue(payload: dict[str, Any], event_type: str) -> None
 
     logger.info("Creating LangGraph run for thread %s from GitHub issue", thread_id)
     langgraph_client = get_client(url=LANGGRAPH_URL)
+    run_metadata = {
+        **_AGENT_VERSION_METADATA,
+        "langfuse_session_id": thread_id,
+        "langfuse_user_id": configurable.get("github_login", "unknown"),
+    }
     await langgraph_client.runs.create(
         thread_id,
         "agent",
         input={"messages": [{"role": "user", "content": prompt}]},
-        config={"configurable": configurable, "metadata": _AGENT_VERSION_METADATA},
+        config={"configurable": configurable, "metadata": run_metadata},
         if_not_exists="create",
     )
     logger.info("LangGraph run created for thread %s from GitHub issue", thread_id)

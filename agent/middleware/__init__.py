@@ -1,3 +1,4 @@
+from .callback_metadata_logger import MetadataLoggerHandler
 from .check_message_queue import check_message_queue_before_model
 from .ensure_no_empty_msg import ensure_no_empty_msg
 from .exclude_tools import ExcludeToolsMiddleware
@@ -10,6 +11,7 @@ from .sanitize_tool_inputs import SanitizeToolInputsMiddleware
 from .tool_error_handler import ToolErrorMiddleware
 
 __all__ = [
+    "MetadataLoggerHandler",
     "ExcludeToolsMiddleware",
     "ModelFallbackMiddleware",
     "SanitizeThinkingBlocksMiddleware",

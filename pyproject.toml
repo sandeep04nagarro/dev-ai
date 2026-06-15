@@ -26,6 +26,7 @@ dependencies = [
     "exa-py>=2.12.1",
     "langchain-google-genai>=4.2.2",
     "langfuse>=4.7.1",
+    "jsonpatch>=1.33",
 ]
 
 [project.optional-dependencies]
