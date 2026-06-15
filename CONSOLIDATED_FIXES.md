@@ -127,5 +127,12 @@ This document provides a comprehensive record of all changes made to enable Open
 - **Assignment at Creation:** Added logic to handle `jira:issue_created` events. This ensures that if a ticket is assigned to the bot at the moment of creation, the agent triggers immediately without needing a separate update or comment.
 - **Instruction Synthesis:** When triggered by assignment, the system generates a synthetic starting instruction for the agent (e.g., *"I have just been assigned to this ticket..."*), while still correctly fetching the full issue context from the Jira API.
 
+## 10. Reviewer Repo Gating Fallback
+
+**File:** `agent/webapp.py`
+**Goal:** Prevent "Repository not enabled for review" errors for repos already allowlisted in `.env`.
+
+- **Smart Fallback:** Modified `_is_repo_enabled_for_review` to fall back to the standard `_is_repo_allowed` check (which uses `ALLOWED_GITHUB_REPOS` and `ALLOWED_GITHUB_ORGS`) if the dashboard's explicit opt-in list is empty. This ensures that repositories configured via environment variables are automatically enabled for auto-reviews and PR comment triggers without requiring manual dashboard configuration.
+
 ---
 *Documented for future reference. Setup verified working as of June 1, 2026.*
