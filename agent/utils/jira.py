@@ -64,7 +64,7 @@ async def fetch_jira_issue_details(issue_id_or_key: str) -> dict[str, Any] | Non
             return None
 
 
-async def post_jira_comment(issue_id_or_key: str, comment_body: str) -> bool:
+async def post_jira_comment(issue_id_or_key: str, comment_body: str) -> str | None:
     """Add a comment to a Jira issue.
 
     Args:
@@ -72,10 +72,10 @@ async def post_jira_comment(issue_id_or_key: str, comment_body: str) -> bool:
         comment_body: The plain text of the comment
 
     Returns:
-        True if successful, False otherwise
+        The comment ID if successful, None otherwise
     """
     if not all([JIRA_API_TOKEN, JIRA_EMAIL, JIRA_DOMAIN]):
-        return False
+        return None
 
     url = f"{JIRA_BASE_URL}/issue/{issue_id_or_key}/comment"
     
@@ -103,9 +103,55 @@ async def post_jira_comment(issue_id_or_key: str, comment_body: str) -> bool:
         try:
             response = await client.post(url, headers=_headers(), json=payload)
             response.raise_for_status()
-            return response.status_code == 201
+            if response.status_code == 201:
+                return response.json().get("id")
+            return None
         except Exception:
             logger.exception("Failed to post Jira comment to %s", issue_id_or_key)
+            return None
+
+
+async def update_jira_comment(issue_id_or_key: str, comment_id: str, comment_body: str) -> bool:
+    """Update an existing comment on a Jira issue.
+
+    Args:
+        issue_id_or_key: The Jira issue ID or Key
+        comment_id: The ID of the comment to update
+        comment_body: The plain text of the updated comment
+
+    Returns:
+        True if successful, False otherwise
+    """
+    if not all([JIRA_API_TOKEN, JIRA_EMAIL, JIRA_DOMAIN]):
+        return False
+
+    url = f"{JIRA_BASE_URL}/issue/{issue_id_or_key}/comment/{comment_id}"
+    
+    payload = {
+        "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {
+                            "text": comment_body,
+                            "type": "text"
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.put(url, headers=_headers(), json=payload)
+            response.raise_for_status()
+            return response.status_code == 200
+        except Exception:
+            logger.exception("Failed to update Jira comment %s on %s", comment_id, issue_id_or_key)
             return False
 
 

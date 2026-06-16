@@ -23,4 +23,4 @@ def jira_comment(comment_body: str, issue_key: str) -> dict[str, Any]:
         Dictionary with 'success' (bool) key.
     """
     success = asyncio.run(post_jira_comment(issue_key, comment_body))
-    return {"success": success}
+    return {"success": bool(success)}

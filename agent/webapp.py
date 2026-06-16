@@ -1611,7 +1611,9 @@ def build_jira_issue_prompt(
         f"{attachment_section}"
         f"{comments_text}\n\n"
         "Please analyze this issue and implement the necessary changes. "
-        "When you need to communicate on Jira, use the `jira_comment` tool."
+        "BEFORE making any code changes, use the `write_todos` tool to formulate a step-by-step implementation plan. "
+        "As you complete the tasks in your plan, use the `write_todos` tool again to check them off. "
+        "When you need to communicate other updates on Jira, use the `jira_comment` tool."
     )
 
 
