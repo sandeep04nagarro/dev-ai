@@ -67,4 +67,5 @@ __pycache__/
 *.egg-info/
 .eggs/
 
-# 
+# opencode files 
+.opencode/

@@ -831,6 +831,11 @@ async def get_reviewer_agent(config: RunnableConfig) -> Pregel:
             http_request,
         ],
         subagents=[_general_purpose_subagent(reviewer_subagent_model)],
+        skills=[
+            "./skills/code-review/",
+            "./skills/testing/",
+            "./skills/documentation/",
+        ],
         backend=sandbox_backend,
         middleware=[
             SanitizeToolInputsMiddleware(),

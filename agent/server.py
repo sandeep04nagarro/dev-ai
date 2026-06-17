@@ -543,6 +543,11 @@ async def get_agent(config: RunnableConfig) -> Pregel:
             slack_thread_reply,
         ],
         subagents=[_general_purpose_subagent(subagent_model)],
+        skills=[
+            "./skills/code-review/",
+            "./skills/testing/",
+            "./skills/documentation/",
+        ],
         backend=backend_factory,
         middleware=[
             SanitizeToolInputsMiddleware(),
