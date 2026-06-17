@@ -40,6 +40,7 @@ from .dashboard.options import DEFAULT_MODEL_ID, SUPPORTED_MODEL_IDS, model_supp
 from .dashboard.team_settings import get_team_default_model, get_team_default_subagent_model
 from .integrations.langsmith import _configure_github_proxy
 from .middleware import (
+    MetadataLoggerHandler,
     ModelFallbackMiddleware,
     SandboxCircuitBreakerMiddleware,
     SanitizeThinkingBlocksMiddleware,
@@ -50,6 +51,7 @@ from .middleware import (
     ensure_no_empty_msg,
     notify_step_limit_reached,
 )
+from .middleware.jira_plan_sync import JiraPlanSyncMiddleware
 from .prompt import construct_system_prompt
 from .tools import (
     fetch_url,
@@ -78,8 +80,9 @@ from .utils.model import (
     provider_model_kwargs,
 )
 from .utils.sandbox import create_sandbox
-from .utils.tracing import get_langfuse_handler
 from .utils.sandbox_paths import aresolve_sandbox_work_dir
+from .utils.tracing import get_langfuse_handler
+from .utils.tracing_diagnostics import _AttrsStore
 
 client = get_client()
 
@@ -489,6 +492,13 @@ async def get_agent(config: RunnableConfig) -> Pregel:
 
     logger.info("Returning agent with sandbox for thread %s", thread_id)
 
+    metadata_logger = MetadataLoggerHandler()
+    callbacks = config.get("callbacks")
+    if callbacks is None:
+        config["callbacks"] = [metadata_logger]
+    elif isinstance(callbacks, list):
+        callbacks.append(metadata_logger)
+
     langfuse_handler = get_langfuse_handler()
     if langfuse_handler:
         callbacks = config.get("callbacks")
@@ -497,8 +507,14 @@ async def get_agent(config: RunnableConfig) -> Pregel:
         elif isinstance(callbacks, list):
             callbacks.append(langfuse_handler)
 
-    if thread_id:
-        config["metadata"]["langfuse_session_id"] = thread_id
+    metadata = config.get("metadata", {}) or {}
+    _AttrsStore.set(
+        thread_id=thread_id,
+        session_id=metadata.get("langfuse_session_id")
+        or configurable.get("langfuse_session_id", thread_id),
+        user_id=metadata.get("langfuse_user_id") or configurable.get("langfuse_user_id", "unknown"),
+        trace_name=metadata.get("langfuse_trace_name") or configurable.get("langfuse_trace_name"),
+    )
 
     main_model = make_model(model_id, **model_kwargs)
     subagent_model = make_model(subagent_model_id, **subagent_model_kwargs)
@@ -533,6 +549,7 @@ async def get_agent(config: RunnableConfig) -> Pregel:
             SanitizeToolInputsMiddleware(),
             ModelCallLimitMiddleware(run_limit=MODEL_CALL_RECURSION_LIMIT, exit_behavior="end"),
             ToolErrorMiddleware(),
+            JiraPlanSyncMiddleware(),
             check_message_queue_before_model,
             SlackAssistantStatusMiddleware(),
             ensure_no_empty_msg,

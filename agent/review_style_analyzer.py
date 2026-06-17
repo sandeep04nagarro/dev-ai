@@ -167,9 +167,6 @@ async def get_review_style_analyzer(config: RunnableConfig) -> Pregel:
         elif isinstance(callbacks, list):
             callbacks.append(langfuse_handler)
 
-    if thread_id:
-        config["metadata"]["langfuse_session_id"] = thread_id
-
     return create_deep_agent(
         model=make_model(model_id, **model_kwargs),
         system_prompt=system_prompt,

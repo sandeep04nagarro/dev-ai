@@ -23,7 +23,7 @@ from .dashboard.agent_overrides import (
     get_profile_default_repo,
     resolve_login_from_email,
 )
-from .dashboard.enabled_repos import is_review_repo_enabled
+from .dashboard.enabled_repos import is_review_repo_enabled, list_enabled_review_repos
 from .dashboard.profiles import get_profile
 from .dashboard.team_settings import get_team_settings
 from .reviewer_findings import (
@@ -68,7 +68,7 @@ from .utils.github_comments import (
 from .utils.github_org_membership import INTERNAL_BOT_LOGINS, is_user_active_org_member
 from .utils.github_token import get_github_token_from_thread, invalidate_cached_github_token
 from .utils.github_user_email_map import GITHUB_USER_EMAIL_MAP
-from .utils.jira import fetch_jira_issue_details, post_jira_comment, post_jira_trace_comment
+from .utils.jira import extract_adf_text, fetch_jira_issue_details, post_jira_comment, post_jira_trace_comment
 from .utils.jira_project_repo_map import JIRA_PROJECT_TO_REPO
 from .utils.linear import post_linear_trace_comment
 from .utils.linear_team_repo_map import LINEAR_TEAM_TO_REPO
@@ -402,10 +402,18 @@ def _is_repo_allowed(repo_config: dict[str, str]) -> bool:
 async def _is_repo_enabled_for_review(repo_config: dict[str, str]) -> bool:
     """Check the dashboard opt-in list for reviewer-agent entrypoints.
 
-    The opt-in list is empty by default, so repos are off until an admin
-    enables them in the dashboard's Open SWE Review tab.
+    The opt-in list is empty by default. If empty, we fall back to the
+    standard env-var allowlist (_is_repo_allowed). Once an admin enables
+    at least one repo in the dashboard, that list becomes the source of truth.
     """
-    return await is_review_repo_enabled(repo_config.get("owner", ""), repo_config.get("name", ""))
+    enabled_repos = await list_enabled_review_repos()
+    if not enabled_repos:
+        return _is_repo_allowed(repo_config)
+
+    owner = repo_config.get("owner", "").lower()
+    name = repo_config.get("name", "").lower()
+    full_name = f"{owner}/{name}"
+    return any(r.lower() == full_name for r in enabled_repos)
 
 
 _PUBLIC_REPO_GATE_REJECTION = {
@@ -778,11 +786,16 @@ async def process_linear_issue(  # noqa: PLR0912, PLR0915
     else:
         logger.info("Creating LangGraph run for thread %s", thread_id)
         langgraph_client = get_client(url=LANGGRAPH_URL)
+        run_metadata = {
+            **_AGENT_VERSION_METADATA,
+            "langfuse_session_id": thread_id,
+            "langfuse_user_id": configurable.get("user_email") or configurable.get("github_login", "unknown"),
+        }
         await langgraph_client.runs.create(
             thread_id,
             "agent",
             input={"messages": [{"role": "user", "content": content_blocks}]},
-            config={"configurable": configurable, "metadata": _AGENT_VERSION_METADATA},
+            config={"configurable": configurable, "metadata": run_metadata},
             if_not_exists="create",
         )
         logger.info("LangGraph run created successfully for thread %s", thread_id)
@@ -937,11 +950,16 @@ async def process_slack_mention(event_data: dict[str, Any], repo_config: dict[st
         return
 
     logger.info("Creating Slack LangGraph run for thread %s", thread_id)
+    run_metadata = {
+        **_AGENT_VERSION_METADATA,
+        "langfuse_session_id": thread_id,
+        "langfuse_user_id": configurable.get("user_email") or configurable.get("github_login", "unknown"),
+    }
     run = await langgraph_client.runs.create(
         thread_id,
         "agent",
         input={"messages": [{"role": "user", "content": content_blocks}]},
-        config={"configurable": configurable, "metadata": _AGENT_VERSION_METADATA},
+        config={"configurable": configurable, "metadata": run_metadata},
         if_not_exists="create",
     )
     logger.info(
@@ -1316,6 +1334,7 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
     
     comment_body = ""
     author_name = "User"
+    author_email = ""
 
     # ---------------------------------------------------------
     # SCENARIO A: Triggered by a Comment (@openswe)
@@ -1344,6 +1363,7 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
             return {"status": "ignored", "reason": "Comment doesn't mention @openswe"}
         
         author_name = author.get("displayName", "User")
+        author_email = author.get("emailAddress", "")
 
     # ---------------------------------------------------------
     # SCENARIO B: Triggered by an Assignment
@@ -1422,7 +1442,7 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
         return {"status": "ignored", "reason": "Repository not in allowlist"}
 
     logger.info("Accepted Jira webhook for issue %s (%s), scheduling background task", issue_key, webhook_event)
-    background_tasks.add_task(process_jira_issue, issue, repo_config, comment_body, author_name)
+    background_tasks.add_task(process_jira_issue, issue, repo_config, comment_body, author_name, author_email)
 
     return {
         "status": "accepted",
@@ -1546,6 +1566,7 @@ def build_jira_issue_prompt(
     title: str,
     description: str,
     comments: list[dict[str, Any]],
+    attachments: list[dict[str, Any]],
     *,
     user_name: str,
 ) -> str:
@@ -1557,21 +1578,28 @@ def build_jira_issue_prompt(
         comments_text = "\n\n## Comments:\n"
         for comment in comments:
             author = (comment.get("author") or {}).get("displayName", "User")
-            # Jira API v3 comments might be in ADF; we'll treat them as text for now
-            # if possible, or expect them to be strings.
             body = comment.get("body")
-            if isinstance(body, dict):
-                # Attempt to extract text from ADF
-                text_parts = []
-                for content in body.get("content", []):
-                    for inner in content.get("content", []):
-                        if inner.get("type") == "text":
-                            text_parts.append(inner.get("text", ""))
-                body = " ".join(text_parts)
+            extracted_body = extract_adf_text(body)
             
-            if not body:
+            if not extracted_body:
                 continue
-            comments_text += f"\n**{author}:** {body}\n"
+            comments_text += f"\n**{author}:** {extracted_body}\n"
+
+    attachment_section = ""
+    if attachments:
+        attachment_section = (
+            "## Attachments\n"
+            "This issue contains attachments. Please run the following commands to download them into your workspace before beginning your analysis:\n\n"
+            "```bash\n"
+        )
+        jira_email = os.environ.get("JIRA_EMAIL", "")
+        jira_token = os.environ.get("JIRA_API_TOKEN", "")
+        for att in attachments:
+            url = att.get('content')
+            filename = att.get('filename')
+            if url and filename:
+                attachment_section += f"curl -sSL -u \"{jira_email}:{jira_token}\" -o \"{filename}\" \"{url}\"\n"
+        attachment_section += "```\n\n"
 
     return (
         "Please work on the following Jira issue:\n\n"
@@ -1580,9 +1608,12 @@ def build_jira_issue_prompt(
         f"## Jira Issue: {issue_key} - Issue ID: {issue_id}\n\n"
         f"## Title: {title}\n\n"
         f"## Description:\n{description}\n"
+        f"{attachment_section}"
         f"{comments_text}\n\n"
         "Please analyze this issue and implement the necessary changes. "
-        "When you need to communicate on Jira, use the `jira_comment` tool."
+        "BEFORE making any code changes, use the `write_todos` tool to formulate a step-by-step implementation plan. "
+        "As you complete the tasks in your plan, use the `write_todos` tool again to check them off. "
+        "When you need to communicate other updates on Jira, use the `jira_comment` tool."
     )
 
 
@@ -1591,6 +1622,7 @@ async def process_jira_issue(
     repo_config: dict[str, str],
     triggering_comment: str,
     author_name: str,
+    author_email: str = "",
 ) -> None:
     """Process a Jira issue by creating a new LangGraph thread and run."""
     issue_id = issue_data.get("id", "")
@@ -1616,17 +1648,13 @@ async def process_jira_issue(
 
     title = fields.get("summary") or webhook_fields.get("summary") or "No title"
     
-    description = fields.get("description") or webhook_fields.get("description") or "No description"
-    if isinstance(description, dict):
-        # Extract text from ADF
-        text_parts = []
-        for content in description.get("content", []):
-            for inner in content.get("content", []):
-                if inner.get("type") == "text":
-                    text_parts.append(inner.get("text", ""))
-        description = " ".join(text_parts)
+    description = fields.get("description") or webhook_fields.get("description")
+    description = extract_adf_text(description) if description else "No description"
 
     comments = full_issue.get("comments", [])
+    
+    # Extract attachments
+    attachments = fields.get("attachment") or webhook_fields.get("attachment") or []
     
     # Ensure the triggering comment is in the list if it's a new comment event
     if triggering_comment and not any(c.get("body") == triggering_comment for c in comments):
@@ -1647,6 +1675,7 @@ async def process_jira_issue(
         title,
         description,
         comments,
+        attachments,
         user_name=user_name,
     )
 
@@ -1661,21 +1690,36 @@ async def process_jira_issue(
         "source": "jira",
     }
 
+    langgraph_client = get_client(url=LANGGRAPH_URL)
     thread_active = await is_thread_active(thread_id)
     if thread_active:
         logger.info("Thread %s is active, queuing Jira message", thread_id)
         await queue_message_for_thread(thread_id, prompt)
     else:
         logger.info("Creating LangGraph run for thread %s from Jira", thread_id)
-        langgraph_client = get_client(url=LANGGRAPH_URL)
+        run_metadata = {
+            **_AGENT_VERSION_METADATA,
+            "langfuse_session_id": issue_key,
+            "langfuse_trace_name": f"Jira: {issue_key} - {title[:60]}",
+            "langfuse_user_id": author_email or author_name,
+        }
         await langgraph_client.runs.create(
             thread_id,
             "agent",
             input={"messages": [{"role": "user", "content": prompt}]},
-            config={"configurable": configurable, "metadata": _AGENT_VERSION_METADATA},
+            config={"configurable": configurable, "metadata": run_metadata},
             if_not_exists="create",
         )
         await post_jira_trace_comment(issue_key or issue_id, thread_id)
+
+    try:
+        await langgraph_client.threads.update(
+            thread_id=thread_id,
+            metadata={"jira_issue_key": issue_key},
+        )
+        logger.info("Successfully persisted jira_issue_key in thread metadata")
+    except Exception:
+        logger.exception("Failed to persist jira_issue_key in thread metadata")
 
 
 async def _trigger_or_queue_run(
@@ -1696,6 +1740,11 @@ async def _trigger_or_queue_run(
 
     logger.info("Creating LangGraph run for thread %s from GitHub PR comment", thread_id)
     langgraph_client = get_client(url=LANGGRAPH_URL)
+    run_metadata = {
+        **_AGENT_VERSION_METADATA,
+        "langfuse_session_id": thread_id,
+        "langfuse_user_id": github_login or "unknown",
+    }
     await langgraph_client.runs.create(
         thread_id,
         "agent",
@@ -1708,7 +1757,7 @@ async def _trigger_or_queue_run(
                 "repo": repo_config,
                 "pr_number": pr_number,
             },
-            "metadata": _AGENT_VERSION_METADATA,
+            "metadata": run_metadata,
         },
         if_not_exists="create",
     )
@@ -1851,11 +1900,16 @@ async def trigger_pr_review_from_ref(
         return {"success": queued, "queued": queued, "thread_id": thread_id, "pr_url": pr_url}
 
     logger.info("Creating reviewer run for thread %s from %s PR review request", thread_id, source)
+    run_metadata = {
+        **_AGENT_VERSION_METADATA,
+        "langfuse_session_id": thread_id,
+        "langfuse_user_id": configurable.get("github_login", "unknown"),
+    }
     run = await langgraph_client.runs.create(
         thread_id,
         "reviewer",
         input={"messages": [{"role": "user", "content": prompt}]},
-        config={"configurable": configurable, "metadata": _AGENT_VERSION_METADATA},
+        config={"configurable": configurable, "metadata": run_metadata},
         if_not_exists="create",
     )
     await _store_current_reviewer_run_id(thread_id, run)
@@ -2026,11 +2080,16 @@ async def _dispatch_first_review_from_pr_payload(payload: dict[str, Any], *, sou
         return
 
     logger.info("Creating reviewer run for thread %s (source=%s)", thread_id, source)
+    run_metadata = {
+        **_AGENT_VERSION_METADATA,
+        "langfuse_session_id": thread_id,
+        "langfuse_user_id": configurable.get("github_login", "unknown"),
+    }
     run = await langgraph_client.runs.create(
         thread_id,
         "reviewer",
         input={"messages": [{"role": "user", "content": prompt}]},
-        config={"configurable": configurable, "metadata": _AGENT_VERSION_METADATA},
+        config={"configurable": configurable, "metadata": run_metadata},
         if_not_exists="create",
     )
     await _store_current_reviewer_run_id(thread_id, run)
@@ -2440,11 +2499,16 @@ async def process_github_push_event(payload: dict[str, Any]) -> None:
         return
 
     logger.info("Creating push re-review run for thread %s", thread_id)
+    run_metadata = {
+        **_AGENT_VERSION_METADATA,
+        "langfuse_session_id": thread_id,
+        "langfuse_user_id": configurable.get("github_login", "unknown"),
+    }
     run = await langgraph_client.runs.create(
         thread_id,
         "reviewer",
         input={"messages": [{"role": "user", "content": re_review_prompt}]},
-        config={"configurable": configurable, "metadata": _AGENT_VERSION_METADATA},
+        config={"configurable": configurable, "metadata": run_metadata},
         if_not_exists="create",
     )
     await _store_current_reviewer_run_id(thread_id, run)
@@ -2795,11 +2859,16 @@ async def process_github_review_finding_reply(payload: dict[str, Any]) -> None:
         return
 
     langgraph_client = get_client(url=LANGGRAPH_URL)
+    run_metadata = {
+        **_AGENT_VERSION_METADATA,
+        "langfuse_session_id": thread_id,
+        "langfuse_user_id": configurable.get("github_login", "unknown"),
+    }
     run = await langgraph_client.runs.create(
         thread_id,
         "reviewer",
         input={"messages": [{"role": "user", "content": prompt}]},
-        config={"configurable": configurable, "metadata": _AGENT_VERSION_METADATA},
+        config={"configurable": configurable, "metadata": run_metadata},
         if_not_exists="create",
     )
     await _store_current_reviewer_run_id(thread_id, run)
@@ -2939,11 +3008,16 @@ async def process_github_issue(payload: dict[str, Any], event_type: str) -> None
 
     logger.info("Creating LangGraph run for thread %s from GitHub issue", thread_id)
     langgraph_client = get_client(url=LANGGRAPH_URL)
+    run_metadata = {
+        **_AGENT_VERSION_METADATA,
+        "langfuse_session_id": thread_id,
+        "langfuse_user_id": configurable.get("github_login", "unknown"),
+    }
     await langgraph_client.runs.create(
         thread_id,
         "agent",
         input={"messages": [{"role": "user", "content": prompt}]},
-        config={"configurable": configurable, "metadata": _AGENT_VERSION_METADATA},
+        config={"configurable": configurable, "metadata": run_metadata},
         if_not_exists="create",
     )
     logger.info("LangGraph run created for thread %s from GitHub issue", thread_id)

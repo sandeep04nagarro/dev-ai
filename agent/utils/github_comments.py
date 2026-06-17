@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import logging
 import re
+import os
 from typing import Any
 
 import httpx
