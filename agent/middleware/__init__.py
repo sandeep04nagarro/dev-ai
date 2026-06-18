@@ -1,5 +1,6 @@
 from .callback_metadata_logger import MetadataLoggerHandler
 from .check_message_queue import check_message_queue_before_model
+from .docker_cleanup import docker_cleanup_middleware
 from .ensure_no_empty_msg import ensure_no_empty_msg
 from .exclude_tools import ExcludeToolsMiddleware
 from .model_fallback import ModelFallbackMiddleware
@@ -20,6 +21,7 @@ __all__ = [
     "SandboxCircuitBreakerMiddleware",
     "SlackAssistantStatusMiddleware",
     "check_message_queue_before_model",
+    "docker_cleanup_middleware",
     "ensure_no_empty_msg",
     "notify_step_limit_reached",
 ]

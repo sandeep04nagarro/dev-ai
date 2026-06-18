@@ -364,6 +364,31 @@ def _get_cached_sandbox_backend(thread_id: str) -> SandboxBackendProtocol:
     return sandbox_backend
 
 
+def _build_middleware_list(
+    fallback_middleware: list[Any],
+) -> list[Any]:
+    middleware = [
+        SanitizeToolInputsMiddleware(),
+        ModelCallLimitMiddleware(
+            run_limit=MODEL_CALL_RECURSION_LIMIT, exit_behavior="end"
+        ),
+        ToolErrorMiddleware(),
+        JiraPlanSyncMiddleware(),
+        check_message_queue_before_model,
+        SlackAssistantStatusMiddleware(),
+        ensure_no_empty_msg,
+        notify_step_limit_reached,
+        SandboxCircuitBreakerMiddleware(),
+        *fallback_middleware,
+        SanitizeThinkingBlocksMiddleware(),
+    ]
+    if os.environ.get("SANDBOX_TYPE", "langsmith") == "docker":
+        from .middleware.docker_cleanup import docker_cleanup_middleware
+
+        middleware.append(docker_cleanup_middleware)
+    return middleware
+
+
 async def get_agent(config: RunnableConfig) -> Pregel:
     """Get or create an agent with a sandbox for the given thread."""
     thread_id = config["configurable"].get("thread_id", None)
@@ -550,17 +575,5 @@ async def get_agent(config: RunnableConfig) -> Pregel:
             "./skills/documentation/",
         ],
         backend=backend_factory,
-        middleware=[
-            SanitizeToolInputsMiddleware(),
-            ModelCallLimitMiddleware(run_limit=MODEL_CALL_RECURSION_LIMIT, exit_behavior="end"),
-            ToolErrorMiddleware(),
-            JiraPlanSyncMiddleware(),
-            check_message_queue_before_model,
-            SlackAssistantStatusMiddleware(),
-            ensure_no_empty_msg,
-            notify_step_limit_reached,
-            SandboxCircuitBreakerMiddleware(),
-            *fallback_middleware,
-            SanitizeThinkingBlocksMiddleware(),
-        ],
+        middleware=_build_middleware_list(fallback_middleware),
     ).with_config(config)

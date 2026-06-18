@@ -69,3 +69,4 @@ __pycache__/
 
 # opencode files 
 .opencode/
+docs/
