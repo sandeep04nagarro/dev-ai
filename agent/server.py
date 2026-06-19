@@ -51,6 +51,7 @@ from .middleware import (
     ensure_no_empty_msg,
     notify_step_limit_reached,
 )
+from .middleware.jira_plan_sync import JiraPlanSyncMiddleware
 from .prompt import construct_system_prompt
 from .tools import (
     fetch_url,
@@ -548,6 +549,7 @@ async def get_agent(config: RunnableConfig) -> Pregel:
             SanitizeToolInputsMiddleware(),
             ModelCallLimitMiddleware(run_limit=MODEL_CALL_RECURSION_LIMIT, exit_behavior="end"),
             ToolErrorMiddleware(),
+            JiraPlanSyncMiddleware(),
             check_message_queue_before_model,
             SlackAssistantStatusMiddleware(),
             ensure_no_empty_msg,

@@ -127,5 +127,21 @@ This document provides a comprehensive record of all changes made to enable Open
 - **Assignment at Creation:** Added logic to handle `jira:issue_created` events. This ensures that if a ticket is assigned to the bot at the moment of creation, the agent triggers immediately without needing a separate update or comment.
 - **Instruction Synthesis:** When triggered by assignment, the system generates a synthetic starting instruction for the agent (e.g., *"I have just been assigned to this ticket..."*), while still correctly fetching the full issue context from the Jira API.
 
+## 10. Reviewer Repo Gating Fallback
+
+**File:** `agent/webapp.py`
+**Goal:** Prevent "Repository not enabled for review" errors for repos already allowlisted in `.env`.
+
+- **Smart Fallback:** Modified `_is_repo_enabled_for_review` to fall back to the standard `_is_repo_allowed` check (which uses `ALLOWED_GITHUB_REPOS` and `ALLOWED_GITHUB_ORGS`) if the dashboard's explicit opt-in list is empty. This ensures that repositories configured via environment variables are automatically enabled for auto-reviews and PR comment triggers without requiring manual dashboard configuration.
+
+## 11. Jira Plan Synchronization
+
+**Files:** `agent/middleware/jira_plan_sync.py`, `agent/server.py`, `agent/utils/jira.py`, `agent/webapp.py`
+**Goal:** Automatically post and dynamically update the agent's implementation plan (todo list) on the Jira ticket without creating comment spam.
+
+- **Jira API Updates:** Modified `post_jira_comment` in `agent/utils/jira.py` to return the new comment's ID, and added an `update_jira_comment` function that uses the Jira v3 `PUT` endpoint.
+- **Middleware Interception:** Created `JiraPlanSyncMiddleware` which intercepts the agent's calls to the `write_todos` tool. If the current thread originated from Jira, the middleware intercepts the new todo list, formats it as a markdown checklist, and either creates a new Jira comment (saving its ID in the LangGraph thread metadata) or updates the existing comment.
+- **Single-Source Planning:** Updated the Jira system prompt in `agent/webapp.py` to instruct the agent to use `write_todos` for planning, removing previous instructions to manually use `jira_comment` to prevent duplicate "plan" comments.
+
 ---
 *Documented for future reference. Setup verified working as of June 1, 2026.*

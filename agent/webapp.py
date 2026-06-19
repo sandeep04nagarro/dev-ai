@@ -23,7 +23,7 @@ from .dashboard.agent_overrides import (
     get_profile_default_repo,
     resolve_login_from_email,
 )
-from .dashboard.enabled_repos import is_review_repo_enabled
+from .dashboard.enabled_repos import is_review_repo_enabled, list_enabled_review_repos
 from .dashboard.profiles import get_profile
 from .dashboard.team_settings import get_team_settings
 from .reviewer_findings import (
@@ -402,10 +402,18 @@ def _is_repo_allowed(repo_config: dict[str, str]) -> bool:
 async def _is_repo_enabled_for_review(repo_config: dict[str, str]) -> bool:
     """Check the dashboard opt-in list for reviewer-agent entrypoints.
 
-    The opt-in list is empty by default, so repos are off until an admin
-    enables them in the dashboard's Open SWE Review tab.
+    The opt-in list is empty by default. If empty, we fall back to the
+    standard env-var allowlist (_is_repo_allowed). Once an admin enables
+    at least one repo in the dashboard, that list becomes the source of truth.
     """
-    return await is_review_repo_enabled(repo_config.get("owner", ""), repo_config.get("name", ""))
+    enabled_repos = await list_enabled_review_repos()
+    if not enabled_repos:
+        return _is_repo_allowed(repo_config)
+
+    owner = repo_config.get("owner", "").lower()
+    name = repo_config.get("name", "").lower()
+    full_name = f"{owner}/{name}"
+    return any(r.lower() == full_name for r in enabled_repos)
 
 
 _PUBLIC_REPO_GATE_REJECTION = {
@@ -1603,7 +1611,9 @@ def build_jira_issue_prompt(
         f"{attachment_section}"
         f"{comments_text}\n\n"
         "Please analyze this issue and implement the necessary changes. "
-        "When you need to communicate on Jira, use the `jira_comment` tool."
+        "BEFORE making any code changes, use the `write_todos` tool to formulate a step-by-step implementation plan. "
+        "As you complete the tasks in your plan, use the `write_todos` tool again to check them off. "
+        "When you need to communicate other updates on Jira, use the `jira_comment` tool."
     )
 
 
