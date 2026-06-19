@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 from langchain.agents.middleware import AgentState, after_agent
@@ -17,6 +18,9 @@ from ..utils.sandbox_state import (
 )
 
 logger = logging.getLogger(__name__)
+
+if os.getenv("DEBUG_MODE", "").lower() in ("on", "1", "true"):
+    logger.setLevel(logging.DEBUG)
 
 
 @after_agent
@@ -50,16 +54,14 @@ async def docker_cleanup_middleware(
         current._container.stop(timeout=5)  # noqa: SLF001
         logger.info("Stopped container %s", container_id)
     except Exception:
-        logger.warning(
-            "Could not stop container %s (may already be stopped)", container_id
-        )
+        logger.warning("Could not stop container %s (may already be stopped)", container_id)
     try:
         current._container.remove(force=True)  # noqa: SLF001
         logger.info("Removed container %s", container_id)
     except Exception:
-        logger.warning(
-            "Could not remove container %s (may already be removed)", container_id
-        )
+        logger.warning("Could not remove container %s (may already be removed)", container_id)
+
+    logger.info("Cleanup complete for container %s on thread %s", container_id, thread_id)
 
     clear_sandbox_backend(thread_id)
     return None

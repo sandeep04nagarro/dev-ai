@@ -19,6 +19,9 @@ from langsmith.sandbox import SandboxClientError
 
 logger = logging.getLogger(__name__)
 
+if os.getenv("DEBUG_MODE", "").lower() in ("on", "1", "true"):
+    logger.setLevel(logging.DEBUG)
+
 DEFAULT_IMAGE = "python:3.12-slim"
 DEFAULT_MEM_LIMIT = "2g"
 DEFAULT_CPU_COUNT = "2"
@@ -47,13 +50,12 @@ class DockerSandbox(BaseSandbox):
             exec_result = self._container.exec_run(
                 cmd=["sh", "-c", command],
                 workdir="/workspace",
-                timeout=timeout or 300,
             )
         except docker.errors.NotFound as e:
-            raise SandboxClientError(
-                f"Container {self._container_short_id} not found: {e}"
-            ) from e
+            logger.warning("Container %s unreachable: %s", self._container_short_id, e)
+            raise SandboxClientError(f"Container {self._container_short_id} not found: {e}") from e
         except docker.errors.APIError as e:
+            logger.warning("Container %s API error: %s", self._container_short_id, e)
             raise SandboxClientError(
                 f"Docker API error for container {self._container_short_id}: {e}"
             ) from e
@@ -63,6 +65,13 @@ class DockerSandbox(BaseSandbox):
             output = output.decode("utf-8", errors="replace")
         else:
             output = str(output)
+
+        logger.debug(
+            "Exec cmd='%.100s' exit=%s output_bytes=%d",
+            command,
+            exec_result.exit_code,
+            len(output),
+        )
 
         return ExecuteResponse(
             output=output,
@@ -81,7 +90,14 @@ class DockerSandbox(BaseSandbox):
         tar_buffer.seek(0)
         try:
             self._container.put_archive("/", tar_buffer)
+            logger.debug("Uploaded %d files to container %s", len(files), self._container_short_id)
         except Exception as e:
+            logger.warning(
+                "Upload of %d files to container %s failed: %s",
+                len(files),
+                self._container_short_id,
+                e,
+            )
             return [FileUploadResponse(path=p, error=str(e)) for p, _ in files]
         return [FileUploadResponse(path=p) for p, _ in files]
 
@@ -92,17 +108,23 @@ class DockerSandbox(BaseSandbox):
                 tar_stream, _ = self._container.get_archive(path)
                 content = b"".join(chunk for chunk in tar_stream)
                 extracted = _extract_first_file_from_tar(content)
-                responses.append(
-                    FileDownloadResponse(path=path, content=extracted)
-                )
+                responses.append(FileDownloadResponse(path=path, content=extracted))
             except docker.errors.NotFound:
-                responses.append(
-                    FileDownloadResponse(path=path, error="file_not_found")
+                logger.debug(
+                    "Download file %s not found in container %s", path, self._container_short_id
                 )
+                responses.append(FileDownloadResponse(path=path, error="file_not_found"))
             except Exception as e:
-                responses.append(
-                    FileDownloadResponse(path=path, error=str(e))
+                logger.warning(
+                    "Download of file %s from container %s failed: %s",
+                    path,
+                    self._container_short_id,
+                    e,
                 )
+                responses.append(FileDownloadResponse(path=path, error=str(e)))
+        logger.debug(
+            "Downloaded %d files from container %s", len(responses), self._container_short_id
+        )
         return responses
 
 
@@ -131,11 +153,14 @@ def create_docker_sandbox(sandbox_id: str | None = None) -> DockerSandbox:
     if sandbox_id:
         try:
             container = client.containers.get(sandbox_id)
+            logger.info(
+                "Reconnecting to existing container %s (status=%s)", sandbox_id, container.status
+            )
         except docker.errors.NotFound as e:
-            raise RuntimeError(
-                f"Existing container {sandbox_id} not found"
-            ) from e
+            logger.warning("Existing container %s not found", sandbox_id)
+            raise RuntimeError(f"Existing container {sandbox_id} not found") from e
         if container.status != "running":
+            logger.info("Starting stopped container %s", sandbox_id)
             container.start()
         return DockerSandbox(container)
 
@@ -151,6 +176,29 @@ def create_docker_sandbox(sandbox_id: str | None = None) -> DockerSandbox:
 
     nano_cpus = int(cpu_count) * 1_000_000_000
 
+    cap_add_list = [
+        "CHOWN",
+        "DAC_OVERRIDE",
+        "FOWNER",
+        "SETUID",
+        "SETGID",
+        "SETPCAP",
+        "NET_RAW",
+        "SYS_CHROOT",
+        "KILL",
+    ]
+
+    logger.info(
+        "Creating container image=%s mem=%s cpu=%s network=%s "
+        "caps_dropped=ALL caps_added=%s seccomp=%s",
+        image,
+        mem_limit,
+        cpu_count,
+        network,
+        cap_add_list,
+        seccomp_profile or "default",
+    )
+
     container = client.containers.run(
         image=image,
         command="tail -f /dev/null",
@@ -160,17 +208,7 @@ def create_docker_sandbox(sandbox_id: str | None = None) -> DockerSandbox:
         mem_limit=mem_limit,
         nano_cpus=nano_cpus,
         cap_drop=["ALL"],
-        cap_add=[
-            "CHOWN",
-            "DAC_OVERRIDE",
-            "FOWNER",
-            "SETUID",
-            "SETGID",
-            "SETPCAP",
-            "NET_RAW",
-            "SYS_CHROOT",
-            "KILL",
-        ],
+        cap_add=cap_add_list,
         security_opt=security_opt,
         labels={"open-swe-task": "true"},
     )
@@ -188,5 +226,7 @@ def create_docker_sandbox(sandbox_id: str | None = None) -> DockerSandbox:
         "&& apt-get update -qq "
         "&& apt-get install -y -qq gh)"
     )
+
+    logger.info("Pre-flight setup complete for container %s (git+gh installed)", container.short_id)
 
     return DockerSandbox(container)
