@@ -131,6 +131,20 @@ To set up per-user OAuth:
 5. Leave "Enable PKCE" unchecked.
 6. Save. You'll reference this Provider ID as `GITHUB_OAUTH_PROVIDER_ID` in your environment variables.
 
+### 4b. Build the sandbox Docker image
+
+For `SANDBOX_TYPE=docker`, sandbox containers are created from `Dockerfile.sandbox` in the project root. This image pre-installs `git` and the GitHub CLI so containers boot immediately with no runtime apt work. A one-time build is required before starting the server.
+
+```bash
+# Build once (defaults to gh v2.83.1)
+docker build -f Dockerfile.sandbox -t open-swe-sandbox:latest .
+
+# Optional: pin a specific gh version at build time
+# docker build -f Dockerfile.sandbox --build-arg GH_VERSION=2.49.0 -t open-swe-sandbox:latest .
+```
+
+The image tag defaults to `open-swe-sandbox:latest` (set in `agent/integrations/docker.py`). Rebuild only when `Dockerfile.sandbox` changes.
+
 ### 4c. Sandbox snapshots
 
 LangSmith sandboxes provide the isolated execution environment for each agent run. Open SWE boots each sandbox from a pre-built **snapshot** — you build the snapshot once (from a Docker image) and then reference it by UUID.

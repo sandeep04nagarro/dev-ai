@@ -22,22 +22,28 @@ logger = logging.getLogger(__name__)
 if os.getenv("DEBUG_MODE", "").lower() in ("on", "1", "true"):
     logger.setLevel(logging.DEBUG)
 
-DEFAULT_IMAGE = "python:3.12-slim"
+DEFAULT_IMAGE = "open-swe-sandbox:latest"
 DEFAULT_MEM_LIMIT = "2g"
 DEFAULT_CPU_COUNT = "2"
 DEFAULT_NETWORK = "bridge"
 
 
 class DockerSandbox(BaseSandbox):
-    """Sandbox backed by a Docker container."""
+    """Sandbox backed by a Docker container.
+
+    Wraps a pre-baked ``open-swe-sandbox`` image that already has git
+    and the GitHub CLI installed, avoiding any per-run apt-get overhead.
+    """
 
     def __init__(self, container: docker.models.containers.Container) -> None:
+        """Wrap a Docker container. Stores a reference to the live container object."""
         self._container = container
         self._container_short_id = container.short_id
         self._container.reload()
 
     @property
     def id(self) -> str:
+        """Short container ID used as the sandbox identifier."""
         return self._container_short_id
 
     def execute(
@@ -46,6 +52,7 @@ class DockerSandbox(BaseSandbox):
         *,
         timeout: int | None = None,
     ) -> ExecuteResponse:
+        """Run a shell command inside the container via exec. Returns output and exit code."""
         try:
             exec_result = self._container.exec_run(
                 cmd=["sh", "-c", command],
@@ -67,10 +74,10 @@ class DockerSandbox(BaseSandbox):
             output = str(output)
 
         logger.debug(
-            "Exec cmd='%.100s' exit=%s output_bytes=%d",
+            "Exec cmd='%.100s' exit=%s output=%.100s",
             command,
             exec_result.exit_code,
-            len(output),
+            output,
         )
 
         return ExecuteResponse(
@@ -80,6 +87,7 @@ class DockerSandbox(BaseSandbox):
         )
 
     def upload_files(self, files: list[tuple[str, bytes]]) -> list[FileUploadResponse]:
+        """Upload files into the container root filesystem via tar archive. Returns per-file result objects."""
         tar_buffer = io.BytesIO()
         with tarfile.open(fileobj=tar_buffer, mode="w") as tar:
             for path, content in files:
@@ -87,21 +95,23 @@ class DockerSandbox(BaseSandbox):
                 info.size = len(content)
                 info.mtime = int(time.time())
                 tar.addfile(info, io.BytesIO(content))
-        tar_buffer.seek(0)
+            tar_buffer.seek(0)
+        upload_error = ""
         try:
             self._container.put_archive("/", tar_buffer)
             logger.debug("Uploaded %d files to container %s", len(files), self._container_short_id)
         except Exception as e:
+            upload_error = str(e)
             logger.warning(
                 "Upload of %d files to container %s failed: %s",
                 len(files),
                 self._container_short_id,
-                e,
+                upload_error,
             )
-            return [FileUploadResponse(path=p, error=str(e)) for p, _ in files]
-        return [FileUploadResponse(path=p) for p, _ in files]
+        return [FileUploadResponse(path=p, error=upload_error) for p, _ in files]
 
     def download_files(self, paths: list[str]) -> list[FileDownloadResponse]:
+        """Download files from the container by path, returning per-path content or error."""
         responses: list[FileDownloadResponse] = []
         for path in paths:
             try:
@@ -129,6 +139,7 @@ class DockerSandbox(BaseSandbox):
 
 
 def _extract_first_file_from_tar(tar_bytes: bytes) -> bytes:
+    """Extract and return the first regular file from a tar byte stream."""
     with tarfile.open(fileobj=io.BytesIO(tar_bytes)) as tar:
         for member in tar:
             if member.isfile():
@@ -141,14 +152,26 @@ def _extract_first_file_from_tar(tar_bytes: bytes) -> bytes:
 def create_docker_sandbox(sandbox_id: str | None = None) -> DockerSandbox:
     """Create or reconnect to a Docker container sandbox.
 
+    When *sandbox_id* is ``None`` a new container is started from the
+    ``DOCKER_SANDBOX_IMAGE`` image (defaults to ``open-swe-sandbox:latest``).
+    When an id is supplied the function reconnects to an existing container,
+    starting it first if it is stopped.
+
+    The ``GITHUB_TOKEN`` environment variable (if set) is forwarded into the
+    container so the in-container GitHub CLI can authenticate without extra
+    setup.
+
     Args:
         sandbox_id: Optional existing container ID to reconnect to.
-            If None, creates a new container.
+            If ``None``, creates a new container.
 
     Returns:
         DockerSandbox instance implementing SandboxBackendProtocol.
     """
     client = docker.from_env()
+
+    _env_to_forward = ["GITHUB_TOKEN"]
+    container_env = {k: os.environ[k] for k in _env_to_forward if k in os.environ}
 
     if sandbox_id:
         try:
@@ -211,22 +234,9 @@ def create_docker_sandbox(sandbox_id: str | None = None) -> DockerSandbox:
         cap_add=cap_add_list,
         security_opt=security_opt,
         labels={"open-swe-task": "true"},
+        environment=container_env,
     )
 
-    container.exec_run("mkdir -p /workspace")
-    container.exec_run("apt-get update -qq")
-    container.exec_run("apt-get install -y -qq git ca-certificates")
-    container.exec_run(
-        "type gh >/dev/null 2>&1 || ("
-        "curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg "
-        "| dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null "
-        "&& echo 'deb [signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] "
-        "https://cli.github.com/packages stable main' "
-        "| tee /etc/apt/sources.list.d/github-cli.list >/dev/null "
-        "&& apt-get update -qq "
-        "&& apt-get install -y -qq gh)"
-    )
-
-    logger.info("Pre-flight setup complete for container %s (git+gh installed)", container.short_id)
+    logger.info("Container %s created from pre-baked image", container.short_id)
 
     return DockerSandbox(container)
