@@ -73,7 +73,8 @@ from .utils.jira_project_repo_map import JIRA_PROJECT_TO_REPO
 from .utils.linear import post_linear_trace_comment
 from .utils.linear_team_repo_map import LINEAR_TEAM_TO_REPO
 from .utils.multimodal import dedupe_urls, extract_image_urls, fetch_image_block
-from .utils.repo import extract_repo_from_text
+from .utils.repo import extract_repo_from_text, extract_repos_from_text
+from .utils.repo_selector import select_repos_for_ticket
 from .utils.sandbox import validate_sandbox_startup_config
 from .utils.slack import (
     GitHubPrRef,
@@ -1426,27 +1427,38 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
 
     project_key = issue_key.split("-")[0] if "-" in issue_key else ""
     
-    # Resolve repo from comment body (if any) first
-    repo_config = extract_repo_from_text(comment_body, default_owner=DEFAULT_REPO_OWNER)
+    # Resolve repos from comment body (if any) first
+    selected_repos = extract_repos_from_text(comment_body, default_owner=DEFAULT_REPO_OWNER)
     
-    # Fallback to JIRA_PROJECT_TO_REPO map
-    if not repo_config and project_key in JIRA_PROJECT_TO_REPO:
-        repo_config = JIRA_PROJECT_TO_REPO[project_key]
-    
-    if not repo_config:
-        logger.warning("Could not resolve repo for Jira issue %s", issue_key)
+    if not selected_repos:
+        fields = issue.get("fields", {})
+        summary = fields.get("summary") or "No title"
+        description = fields.get("description")
+        description = extract_adf_text(description) if description else "No description"
+        
+        selected_repos = await select_repos_for_ticket(
+            project_key=project_key,
+            issue_key=issue_key,
+            summary=summary,
+            description=description,
+        )
+
+    if not selected_repos:
+        logger.warning("Could not resolve any repo for Jira issue %s", issue_key)
         return {"status": "ignored", "reason": "Could not resolve repository mapping"}
 
-    if not _is_repo_allowed(repo_config):
-        logger.warning("Jira trigger for forbidden repo: %s/%s", repo_config["owner"], repo_config["name"])
+    # Check allowed lists
+    allowed_repos = [r for r in selected_repos if _is_repo_allowed(r)]
+    if not allowed_repos:
+        logger.warning("Jira trigger for forbidden repos. None of the selected repos are allowed.")
         return {"status": "ignored", "reason": "Repository not in allowlist"}
 
-    logger.info("Accepted Jira webhook for issue %s (%s), scheduling background task", issue_key, webhook_event)
-    background_tasks.add_task(process_jira_issue, issue, repo_config, comment_body, author_name, author_email)
+    logger.info("Accepted Jira webhook for issue %s (%s), scheduling background task for %d repos", issue_key, webhook_event, len(allowed_repos))
+    background_tasks.add_task(process_jira_issue, issue, allowed_repos, comment_body, author_name, author_email)
 
     return {
         "status": "accepted",
-        "message": f"Processing Jira issue {issue_key} ({webhook_event}) for repo {repo_config['owner']}/{repo_config['name']}",
+        "message": f"Processing Jira issue {issue_key} ({webhook_event}) for {len(allowed_repos)} repos",
     }
 
 
@@ -1560,7 +1572,7 @@ def build_github_issue_update_prompt(github_login: str, title: str, body: str) -
 
 
 def build_jira_issue_prompt(
-    repo_config: dict[str, str],
+    selected_repos: list[dict[str, str]],
     issue_key: str,
     issue_id: str,
     title: str,
@@ -1571,11 +1583,11 @@ def build_jira_issue_prompt(
     user_name: str,
 ) -> str:
     """Build the user prompt for a Jira issue-triggered run."""
-    triggered_by_line = f"## Triggered by: {user_name}\n\n" if user_name else ""
+    triggered_by_line = f"## Triggered by: {user_name}\\n\\n" if user_name else ""
     
     comments_text = ""
     if comments:
-        comments_text = "\n\n## Comments:\n"
+        comments_text = "\\n\\n## Comments:\\n"
         for comment in comments:
             author = (comment.get("author") or {}).get("displayName", "User")
             body = comment.get("body")
@@ -1583,14 +1595,14 @@ def build_jira_issue_prompt(
             
             if not extracted_body:
                 continue
-            comments_text += f"\n**{author}:** {extracted_body}\n"
+            comments_text += f"\\n**{author}:** {extracted_body}\\n"
 
     attachment_section = ""
     if attachments:
         attachment_section = (
-            "## Attachments\n"
-            "This issue contains attachments. Please run the following commands to download them into your workspace before beginning your analysis:\n\n"
-            "```bash\n"
+            "## Attachments\\n"
+            "This issue contains attachments. Please run the following commands to download them into your workspace before beginning your analysis:\\n\\n"
+            "```bash\\n"
         )
         jira_email = os.environ.get("JIRA_EMAIL", "")
         jira_token = os.environ.get("JIRA_API_TOKEN", "")
@@ -1598,18 +1610,23 @@ def build_jira_issue_prompt(
             url = att.get('content')
             filename = att.get('filename')
             if url and filename:
-                attachment_section += f"curl -sSL -u \"{jira_email}:{jira_token}\" -o \"{filename}\" \"{url}\"\n"
-        attachment_section += "```\n\n"
+                attachment_section += f"curl -sSL -u \\\"{jira_email}:{jira_token}\\\" -o \\\"{filename}\\\" \\\"{url}\\\"\\n"
+        attachment_section += "```\\n\\n"
+
+    repos_section = "## Repositories\\nThis issue involves the following repositories:\\n"
+    for r in selected_repos:
+        repos_section += f"- **{r['name']}** (Type: {r.get('type', 'unknown')}): {r['owner']}/{r['name']}\\n"
+    repos_section += "\\n"
 
     return (
-        "Please work on the following Jira issue:\n\n"
-        f"## Repository: {repo_config.get('owner')}/{repo_config.get('name')}\n\n"
+        "Please work on the following Jira issue:\\n\\n"
+        f"{repos_section}"
         f"{triggered_by_line}"
-        f"## Jira Issue: {issue_key} - Issue ID: {issue_id}\n\n"
-        f"## Title: {title}\n\n"
-        f"## Description:\n{description}\n"
+        f"## Jira Issue: {issue_key} - Issue ID: {issue_id}\\n\\n"
+        f"## Title: {title}\\n\\n"
+        f"## Description:\\n{description}\\n"
         f"{attachment_section}"
-        f"{comments_text}\n\n"
+        f"{comments_text}\\n\\n"
         "Please analyze this issue and implement the necessary changes. "
         "BEFORE making any code changes, use the `write_todos` tool to formulate a step-by-step implementation plan. "
         "As you complete the tasks in your plan, use the `write_todos` tool again to check them off. "
@@ -1619,7 +1636,7 @@ def build_jira_issue_prompt(
 
 async def process_jira_issue(
     issue_data: dict[str, Any],
-    repo_config: dict[str, str],
+    selected_repos: list[dict[str, str]],
     triggering_comment: str,
     author_name: str,
     author_email: str = "",
@@ -1628,12 +1645,12 @@ async def process_jira_issue(
     issue_id = issue_data.get("id", "")
     issue_key = issue_data.get("key", "")
     
+    repo_names = [r["name"] for r in selected_repos]
     logger.info(
-        "Processing Jira issue %s (%s) for repo %s/%s",
+        "Processing Jira issue %s (%s) for repos %s",
         issue_key,
         issue_id,
-        repo_config.get("owner"),
-        repo_config.get("name"),
+        repo_names,
     )
 
     thread_id = generate_thread_id_from_issue(f"jira:{issue_id}")
@@ -1669,7 +1686,7 @@ async def process_jira_issue(
     user_email = creator.get("emailAddress", "")
 
     prompt = build_jira_issue_prompt(
-        repo_config,
+        selected_repos,
         issue_key,
         issue_id,
         title,
@@ -1679,8 +1696,13 @@ async def process_jira_issue(
         user_name=user_name,
     )
 
+    # Use the first repo as the primary 'repo' config to satisfy single-repo downstream checks, 
+    # but store selected_repos as well
+    primary_repo = selected_repos[0] if selected_repos else {}
+
     configurable: dict[str, Any] = {
-        "repo": repo_config,
+        "repo": primary_repo,
+        "selected_repos": selected_repos,
         "jira_issue": {
             "id": issue_id,
             "key": issue_key,
@@ -1715,7 +1737,7 @@ async def process_jira_issue(
     try:
         await langgraph_client.threads.update(
             thread_id=thread_id,
-            metadata={"jira_issue_key": issue_key},
+            metadata={"jira_issue_key": issue_key, "selected_repos": selected_repos},
         )
         logger.info("Successfully persisted jira_issue_key in thread metadata")
     except Exception:

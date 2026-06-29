@@ -40,8 +40,11 @@ from .dashboard.options import DEFAULT_MODEL_ID, SUPPORTED_MODEL_IDS, model_supp
 from .dashboard.team_settings import get_team_default_model, get_team_default_subagent_model
 from .integrations.langsmith import _configure_github_proxy
 from .middleware import (
+    ExcludeToolsMiddleware,
+    JiraPlanSyncMiddleware,
     MetadataLoggerHandler,
     ModelFallbackMiddleware,
+    MultiRepoCloneMiddleware,
     SandboxCircuitBreakerMiddleware,
     SanitizeThinkingBlocksMiddleware,
     SanitizeToolInputsMiddleware,
@@ -547,6 +550,7 @@ async def get_agent(config: RunnableConfig) -> Pregel:
         backend=backend_factory,
         middleware=[
             SanitizeToolInputsMiddleware(),
+            MultiRepoCloneMiddleware(),
             ModelCallLimitMiddleware(run_limit=MODEL_CALL_RECURSION_LIMIT, exit_behavior="end"),
             ToolErrorMiddleware(),
             JiraPlanSyncMiddleware(),
