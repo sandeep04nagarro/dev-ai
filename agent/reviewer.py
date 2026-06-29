@@ -32,6 +32,7 @@ from deepagents import create_deep_agent
 from langchain.agents.middleware import ModelCallLimitMiddleware
 
 from .middleware import (
+    ConsecutiveFailureBreakerMiddleware,
     SanitizeThinkingBlocksMiddleware,
     SanitizeToolInputsMiddleware,
     SlackAssistantStatusMiddleware,
@@ -45,6 +46,8 @@ from .reviewer_findings import (
 from .reviewer_publish import fetch_pr_review_threads
 from .reviewer_reconcile import reconcile_findings_with_review_threads
 from .server import (
+    CONSECUTIVE_FAILURE_DEFAULT_THRESHOLD,
+    CONSECUTIVE_FAILURE_THRESHOLDS,
     DEFAULT_LLM_MAX_TOKENS,
     DEFAULT_RECURSION_LIMIT,
     MODEL_CALL_RECURSION_LIMIT,
@@ -725,7 +728,9 @@ async def get_reviewer_agent(config: RunnableConfig) -> Pregel:
         subagent_model_id, subagent_effort = await get_team_default_subagent_model("reviewer")
         if env_model_id:
             subagent_model_id = env_model_id
-            logger.info("Using LLM_MODEL_ID environment override for subagent: %s", subagent_model_id)
+            logger.info(
+                "Using LLM_MODEL_ID environment override for subagent: %s", subagent_model_id
+            )
 
         logger.info(
             "Using team default reviewer subagent model: model=%s effort=%s",
@@ -839,6 +844,10 @@ async def get_reviewer_agent(config: RunnableConfig) -> Pregel:
         backend=sandbox_backend,
         middleware=[
             SanitizeToolInputsMiddleware(),
+            ConsecutiveFailureBreakerMiddleware(
+                thresholds=CONSECUTIVE_FAILURE_THRESHOLDS,
+                default_threshold=CONSECUTIVE_FAILURE_DEFAULT_THRESHOLD,
+            ),
             ModelCallLimitMiddleware(run_limit=MODEL_CALL_RECURSION_LIMIT, exit_behavior="end"),
             ToolErrorMiddleware(),
             check_message_queue_before_model,

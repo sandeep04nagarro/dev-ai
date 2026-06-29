@@ -39,7 +39,8 @@ from .dashboard.agent_overrides import (
 from .dashboard.options import DEFAULT_MODEL_ID, SUPPORTED_MODEL_IDS, model_supports_effort
 from .dashboard.team_settings import get_team_default_model, get_team_default_subagent_model
 from .integrations.langsmith import _configure_github_proxy
-from .middleware import (
+from .middleware import (  # noqa: E402
+    ConsecutiveFailureBreakerMiddleware,
     MetadataLoggerHandler,
     ModelFallbackMiddleware,
     SandboxCircuitBreakerMiddleware,
@@ -52,6 +53,7 @@ from .middleware import (
     notify_step_limit_reached,
 )
 from .middleware.jira_plan_sync import JiraPlanSyncMiddleware
+from .middleware.ticket_token_usage import TicketTokenUsageMiddleware
 from .prompt import construct_system_prompt
 from .tools import (
     fetch_url,
@@ -347,6 +349,13 @@ DEFAULT_LLM_MAX_TOKENS = 64_000
 DEFAULT_RECURSION_LIMIT = 9_999
 MODEL_CALL_RECURSION_LIMIT = 5_000  # ~half the recursion limit to account for tool calls
 
+CONSECUTIVE_FAILURE_DEFAULT_THRESHOLD = 5
+CONSECUTIVE_FAILURE_THRESHOLDS: dict[str, int] = {
+    "execute": 5,
+    "ls": 20,
+    "read_file": 50,
+}
+
 
 def _general_purpose_subagent(model: BaseChatModel) -> SubAgent:
     return {
@@ -369,10 +378,13 @@ def _build_middleware_list(
 ) -> list[Any]:
     middleware = [
         SanitizeToolInputsMiddleware(),
-        ModelCallLimitMiddleware(
-            run_limit=MODEL_CALL_RECURSION_LIMIT, exit_behavior="end"
+        ConsecutiveFailureBreakerMiddleware(
+            thresholds=CONSECUTIVE_FAILURE_THRESHOLDS,
+            default_threshold=CONSECUTIVE_FAILURE_DEFAULT_THRESHOLD,
         ),
+        ModelCallLimitMiddleware(run_limit=MODEL_CALL_RECURSION_LIMIT, exit_behavior="end"),
         ToolErrorMiddleware(),
+        TicketTokenUsageMiddleware(),
         JiraPlanSyncMiddleware(),
         check_message_queue_before_model,
         SlackAssistantStatusMiddleware(),
