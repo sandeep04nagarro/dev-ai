@@ -41,6 +41,7 @@ from .profiles import (
     upsert_access_token_from_github_response,
     upsert_profile,
 )
+from .project_repos import ProjectRepoUpdate, api_get_project_repos, api_set_project_repos
 from .review_style_jobs import (
     cancel_review_style_analysis,
     start_review_style_analysis,
@@ -300,6 +301,23 @@ async def api_set_enabled_review_repo(
 ) -> dict[str, list[str]]:
     repos = await set_review_repo_enabled(update.full_name, update.enabled)
     return {"repos": repos}
+
+
+@router.get("/project-repos/{project_key}")
+async def route_get_project_repos(
+    project_key: str,
+    _session: dict[str, Any] = _SESSION_DEP,
+) -> dict[str, Any]:
+    return await api_get_project_repos(project_key)
+
+
+@router.put("/project-repos/{project_key}")
+async def route_set_project_repos(
+    project_key: str,
+    update: ProjectRepoUpdate,
+    _admin: dict[str, Any] = _ADMIN_DEP,
+) -> dict[str, Any]:
+    return await api_set_project_repos(project_key, update)
 
 
 def _next_link_url(link_header: str | None) -> str | None:

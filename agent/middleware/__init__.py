@@ -9,6 +9,8 @@ from .sandbox_circuit_breaker import SandboxCircuitBreakerMiddleware
 from .sanitize_thinking_blocks import SanitizeThinkingBlocksMiddleware
 from .sanitize_tool_inputs import SanitizeToolInputsMiddleware
 from .tool_error_handler import ToolErrorMiddleware
+from .multi_repo_clone import MultiRepoCloneMiddleware
+from .jira_plan_sync import JiraPlanSyncMiddleware
 
 __all__ = [
     "MetadataLoggerHandler",
@@ -22,4 +24,6 @@ __all__ = [
     "check_message_queue_before_model",
     "ensure_no_empty_msg",
     "notify_step_limit_reached",
+    "MultiRepoCloneMiddleware",
+    "JiraPlanSyncMiddleware",
 ]
