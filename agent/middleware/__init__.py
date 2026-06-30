@@ -18,6 +18,7 @@ from agent.middleware.sanitize_thinking_blocks import SanitizeThinkingBlocksMidd
 from agent.middleware.sanitize_tool_inputs import SanitizeToolInputsMiddleware
 from agent.middleware.ticket_token_usage import TicketTokenUsageMiddleware
 from agent.middleware.tool_error_handler import ToolErrorMiddleware
+from agent.middleware.multi_repo_clone import MultiRepoCloneMiddleware
 
 MODEL_CALL_RECURSION_LIMIT = 5_000
 
@@ -46,6 +47,8 @@ __all__ = [
     "docker_cleanup_middleware",
     "ensure_no_empty_msg",
     "notify_step_limit_reached",
+    "MultiRepoCloneMiddleware",
+    "JiraPlanSyncMiddleware",
 ]
 
 
@@ -54,6 +57,7 @@ def build_server_middleware_list(
 ) -> list[Any]:
     middleware = [
         SanitizeToolInputsMiddleware(),
+        MultiRepoCloneMiddleware(),
         ConsecutiveFailureBreakerMiddleware(
             thresholds=CONSECUTIVE_FAILURE_THRESHOLDS,
             default_threshold=CONSECUTIVE_FAILURE_DEFAULT_THRESHOLD,
