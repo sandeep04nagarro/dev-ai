@@ -21,6 +21,13 @@ from .tool_error_handler import ToolErrorMiddleware
 
 MODEL_CALL_RECURSION_LIMIT = 5_000
 
+CONSECUTIVE_FAILURE_THRESHOLDS: dict[str, int] = {
+    "execute": 5,
+    "ls": 20,
+    "read_file": 50,
+}
+CONSECUTIVE_FAILURE_DEFAULT_THRESHOLD = 5
+
 __all__ = [
     "MetadataLoggerHandler",
     "ConsecutiveFailureBreakerMiddleware",
@@ -33,7 +40,8 @@ __all__ = [
     "ToolErrorMiddleware",
     "SandboxCircuitBreakerMiddleware",
     "SlackAssistantStatusMiddleware",
-    "build_middleware_list",
+    "build_reviewer_middleware_list",
+    "build_server_middleware_list",
     "check_message_queue_before_model",
     "docker_cleanup_middleware",
     "ensure_no_empty_msg",
@@ -41,13 +49,18 @@ __all__ = [
 ]
 
 
-def build_middleware_list(
+def build_server_middleware_list(
     fallback_middleware: list[Any],
 ) -> list[Any]:
     middleware = [
         SanitizeToolInputsMiddleware(),
+        ConsecutiveFailureBreakerMiddleware(
+            thresholds=CONSECUTIVE_FAILURE_THRESHOLDS,
+            default_threshold=CONSECUTIVE_FAILURE_DEFAULT_THRESHOLD,
+        ),
         ModelCallLimitMiddleware(run_limit=MODEL_CALL_RECURSION_LIMIT, exit_behavior="end"),
         ToolErrorMiddleware(),
+        TicketTokenUsageMiddleware(),
         JiraPlanSyncMiddleware(),
         check_message_queue_before_model,
         SlackAssistantStatusMiddleware(),
@@ -62,3 +75,18 @@ def build_middleware_list(
 
         middleware.append(docker_cleanup_middleware)
     return middleware
+
+
+def build_reviewer_middleware_list() -> list[Any]:
+    return [
+        SanitizeToolInputsMiddleware(),
+        ConsecutiveFailureBreakerMiddleware(
+            thresholds=CONSECUTIVE_FAILURE_THRESHOLDS,
+            default_threshold=CONSECUTIVE_FAILURE_DEFAULT_THRESHOLD,
+        ),
+        ModelCallLimitMiddleware(run_limit=MODEL_CALL_RECURSION_LIMIT, exit_behavior="end"),
+        ToolErrorMiddleware(),
+        check_message_queue_before_model,
+        SlackAssistantStatusMiddleware(),
+        SanitizeThinkingBlocksMiddleware(),
+    ]

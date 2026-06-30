@@ -28,6 +28,12 @@ from deepagents.middleware.subagents import GENERAL_PURPOSE_SUBAGENT, SubAgent
 from langchain_core.language_models import BaseChatModel
 from langsmith.sandbox import SandboxClientError
 
+from agent.middleware import (  # noqa: E402
+    MetadataLoggerHandler,
+    ModelFallbackMiddleware,
+    build_server_middleware_list,
+)
+
 from .dashboard.agent_overrides import (
     load_profile,
     normalize_profile_overrides,
@@ -38,14 +44,6 @@ from .dashboard.agent_overrides import (
 from .dashboard.options import DEFAULT_MODEL_ID, SUPPORTED_MODEL_IDS, model_supports_effort
 from .dashboard.team_settings import get_team_default_model, get_team_default_subagent_model
 from .integrations.langsmith import _configure_github_proxy
-from agent.middleware import (  # noqa: E402
-    ConsecutiveFailureBreakerMiddleware,
-    MetadataLoggerHandler,
-    ModelFallbackMiddleware,
-    build_middleware_list,
-)
-from agent.middleware.jira_plan_sync import JiraPlanSyncMiddleware
-from agent.middleware.ticket_token_usage import TicketTokenUsageMiddleware
 from .prompt import construct_system_prompt
 from .tools import (
     fetch_url,
@@ -340,13 +338,6 @@ DEFAULT_LLM_MODEL_ID = DEFAULT_MODEL_ID
 DEFAULT_LLM_MAX_TOKENS = 64_000
 DEFAULT_RECURSION_LIMIT = 9_999
 
-CONSECUTIVE_FAILURE_DEFAULT_THRESHOLD = 5
-CONSECUTIVE_FAILURE_THRESHOLDS: dict[str, int] = {
-    "execute": 5,
-    "ls": 20,
-    "read_file": 50,
-}
-
 
 def _general_purpose_subagent(model: BaseChatModel) -> SubAgent:
     return {
@@ -362,34 +353,6 @@ def _get_cached_sandbox_backend(thread_id: str) -> SandboxBackendProtocol:
     if sandbox_backend is None:
         raise RuntimeError(f"No sandbox backend cached for thread {thread_id}")
     return sandbox_backend
-
-
-def _build_middleware_list(
-    fallback_middleware: list[Any],
-) -> list[Any]:
-    middleware = [
-        SanitizeToolInputsMiddleware(),
-        ConsecutiveFailureBreakerMiddleware(
-            thresholds=CONSECUTIVE_FAILURE_THRESHOLDS,
-            default_threshold=CONSECUTIVE_FAILURE_DEFAULT_THRESHOLD,
-        ),
-        ModelCallLimitMiddleware(run_limit=MODEL_CALL_RECURSION_LIMIT, exit_behavior="end"),
-        ToolErrorMiddleware(),
-        TicketTokenUsageMiddleware(),
-        JiraPlanSyncMiddleware(),
-        check_message_queue_before_model,
-        SlackAssistantStatusMiddleware(),
-        ensure_no_empty_msg,
-        notify_step_limit_reached,
-        SandboxCircuitBreakerMiddleware(),
-        *fallback_middleware,
-        SanitizeThinkingBlocksMiddleware(),
-    ]
-    if os.environ.get("SANDBOX_TYPE", "langsmith") == "docker":
-        from .middleware.docker_cleanup import docker_cleanup_middleware
-
-        middleware.append(docker_cleanup_middleware)
-    return middleware
 
 
 async def get_agent(config: RunnableConfig) -> Pregel:
@@ -578,5 +541,5 @@ async def get_agent(config: RunnableConfig) -> Pregel:
             "./skills/documentation/",
         ],
         backend=backend_factory,
-        middleware=build_middleware_list(fallback_middleware),
+        middleware=build_server_middleware_list(fallback_middleware),
     ).with_config(config)
