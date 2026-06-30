@@ -3,21 +3,21 @@ from typing import Any
 
 from langchain.agents.middleware import ModelCallLimitMiddleware
 
-from .callback_metadata_logger import MetadataLoggerHandler
-from .check_message_queue import check_message_queue_before_model
-from .consecutive_failure_breaker import ConsecutiveFailureBreakerMiddleware
-from .docker_cleanup import docker_cleanup_middleware
-from .ensure_no_empty_msg import ensure_no_empty_msg
-from .exclude_tools import ExcludeToolsMiddleware
-from .jira_plan_sync import JiraPlanSyncMiddleware
-from .model_fallback import ModelFallbackMiddleware
-from .notify_step_limit import notify_step_limit_reached
-from .refresh_slack_status import SlackAssistantStatusMiddleware
-from .sandbox_circuit_breaker import SandboxCircuitBreakerMiddleware
-from .sanitize_thinking_blocks import SanitizeThinkingBlocksMiddleware
-from .sanitize_tool_inputs import SanitizeToolInputsMiddleware
-from .ticket_token_usage import TicketTokenUsageMiddleware
-from .tool_error_handler import ToolErrorMiddleware
+from agent.middleware.callback_metadata_logger import MetadataLoggerHandler
+from agent.middleware.check_message_queue import check_message_queue_before_model
+from agent.middleware.consecutive_failure_breaker import ConsecutiveFailureBreakerMiddleware
+from agent.middleware.docker_cleanup import docker_cleanup_middleware
+from agent.middleware.ensure_no_empty_msg import ensure_no_empty_msg
+from agent.middleware.exclude_tools import ExcludeToolsMiddleware
+from agent.middleware.jira_plan_sync import JiraPlanSyncMiddleware
+from agent.middleware.model_fallback import ModelFallbackMiddleware
+from agent.middleware.notify_step_limit import notify_step_limit_reached
+from agent.middleware.refresh_slack_status import SlackAssistantStatusMiddleware
+from agent.middleware.sandbox_circuit_breaker import SandboxCircuitBreakerMiddleware
+from agent.middleware.sanitize_thinking_blocks import SanitizeThinkingBlocksMiddleware
+from agent.middleware.sanitize_tool_inputs import SanitizeToolInputsMiddleware
+from agent.middleware.ticket_token_usage import TicketTokenUsageMiddleware
+from agent.middleware.tool_error_handler import ToolErrorMiddleware
 
 MODEL_CALL_RECURSION_LIMIT = 5_000
 
