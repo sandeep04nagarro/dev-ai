@@ -41,7 +41,7 @@ from .profiles import (
     upsert_access_token_from_github_response,
     upsert_profile,
 )
-from .project_repos import ProjectRepoUpdate, api_get_project_repos, api_set_project_repos
+from agent.dashboard.project_repos import ProjectRepoUpdate, api_get_project_repos, api_set_project_repos
 from .review_style_jobs import (
     cancel_review_style_analysis,
     start_review_style_analysis,

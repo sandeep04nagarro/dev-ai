@@ -8,7 +8,7 @@ from typing import TypedDict
 
 from langgraph_sdk import get_client
 
-from .jira_project_repo_map import JIRA_PROJECT_TO_REPO
+from agent.utils.jira_project_repo_map import JIRA_PROJECT_TO_REPO
 
 logger = logging.getLogger(__name__)
 

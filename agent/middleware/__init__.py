@@ -16,8 +16,8 @@ from .sandbox_circuit_breaker import SandboxCircuitBreakerMiddleware
 from .sanitize_thinking_blocks import SanitizeThinkingBlocksMiddleware
 from .sanitize_tool_inputs import SanitizeToolInputsMiddleware
 from .tool_error_handler import ToolErrorMiddleware
-from .multi_repo_clone import MultiRepoCloneMiddleware
-from .jira_plan_sync import JiraPlanSyncMiddleware
+from agent.middleware.multi_repo_clone import MultiRepoCloneMiddleware
+from agent.middleware.jira_plan_sync import JiraPlanSyncMiddleware
 
 MODEL_CALL_RECURSION_LIMIT = 5_000
 

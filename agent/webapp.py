@@ -73,8 +73,8 @@ from .utils.jira_project_repo_map import JIRA_PROJECT_TO_REPO
 from .utils.linear import post_linear_trace_comment
 from .utils.linear_team_repo_map import LINEAR_TEAM_TO_REPO
 from .utils.multimodal import dedupe_urls, extract_image_urls, fetch_image_block
-from .utils.repo import extract_repo_from_text, extract_repos_from_text
-from .utils.repo_selector import select_repos_for_ticket
+from agent.utils.repo import extract_repo_from_text, extract_repos_from_text
+from agent.utils.repo_selector import select_repos_for_ticket
 from .utils.sandbox import validate_sandbox_startup_config
 from .utils.slack import (
     GitHubPrRef,

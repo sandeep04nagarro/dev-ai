@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from ..utils.multi_repo_registry import RepoConfig, get_project_repos, set_project_repos
+from agent.utils.multi_repo_registry import RepoConfig, get_project_repos, set_project_repos
 
 logger = logging.getLogger(__name__)
 

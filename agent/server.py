@@ -38,7 +38,7 @@ from .dashboard.agent_overrides import (
 from .dashboard.options import DEFAULT_MODEL_ID, SUPPORTED_MODEL_IDS, model_supports_effort
 from .dashboard.team_settings import get_team_default_model, get_team_default_subagent_model
 from .integrations.langsmith import _configure_github_proxy
-from .middleware import (
+from agent.middleware import (
     ExcludeToolsMiddleware,
     JiraPlanSyncMiddleware,
     MetadataLoggerHandler,

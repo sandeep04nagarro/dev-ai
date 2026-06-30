@@ -9,9 +9,9 @@ from typing import Any
 
 from langchain_core.messages import SystemMessage
 
-from ..dashboard.options import DEFAULT_MODEL_ID
-from .model import make_model
-from .multi_repo_registry import RepoConfig, get_project_repos
+from agent.dashboard.options import DEFAULT_MODEL_ID
+from agent.utils.model import make_model
+from agent.utils.multi_repo_registry import RepoConfig, get_project_repos
 
 logger = logging.getLogger(__name__)
 
