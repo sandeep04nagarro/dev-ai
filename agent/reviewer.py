@@ -32,6 +32,7 @@ from deepagents import create_deep_agent
 from langchain.agents.middleware import ModelCallLimitMiddleware
 
 from .middleware import (
+    MODEL_CALL_RECURSION_LIMIT,
     SanitizeThinkingBlocksMiddleware,
     SanitizeToolInputsMiddleware,
     SlackAssistantStatusMiddleware,
@@ -47,7 +48,6 @@ from .reviewer_reconcile import reconcile_findings_with_review_threads
 from .server import (
     DEFAULT_LLM_MAX_TOKENS,
     DEFAULT_RECURSION_LIMIT,
-    MODEL_CALL_RECURSION_LIMIT,
     _general_purpose_subagent,
     ensure_sandbox_for_thread,
     graph_loaded_for_execution,
@@ -725,7 +725,9 @@ async def get_reviewer_agent(config: RunnableConfig) -> Pregel:
         subagent_model_id, subagent_effort = await get_team_default_subagent_model("reviewer")
         if env_model_id:
             subagent_model_id = env_model_id
-            logger.info("Using LLM_MODEL_ID environment override for subagent: %s", subagent_model_id)
+            logger.info(
+                "Using LLM_MODEL_ID environment override for subagent: %s", subagent_model_id
+            )
 
         logger.info(
             "Using team default reviewer subagent model: model=%s effort=%s",
