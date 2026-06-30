@@ -38,9 +38,20 @@ from .dashboard.agent_overrides import (
 from .dashboard.options import DEFAULT_MODEL_ID, SUPPORTED_MODEL_IDS, model_supports_effort
 from .dashboard.team_settings import get_team_default_model, get_team_default_subagent_model
 from .integrations.langsmith import _configure_github_proxy
-from .middleware import (
+from agent.middleware import (
+    ExcludeToolsMiddleware,
+    JiraPlanSyncMiddleware,
     MetadataLoggerHandler,
     ModelFallbackMiddleware,
+    MultiRepoCloneMiddleware,
+    SandboxCircuitBreakerMiddleware,
+    SanitizeThinkingBlocksMiddleware,
+    SanitizeToolInputsMiddleware,
+    SlackAssistantStatusMiddleware,
+    ToolErrorMiddleware,
+    check_message_queue_before_model,
+    ensure_no_empty_msg,
+    notify_step_limit_reached,
     build_middleware_list,
 )
 from .prompt import construct_system_prompt
@@ -534,11 +545,25 @@ async def get_agent(config: RunnableConfig) -> Pregel:
             slack_thread_reply,
         ],
         subagents=[_general_purpose_subagent(subagent_model)],
+        backend=backend_factory,
+        middleware=[
+            SanitizeToolInputsMiddleware(),
+            MultiRepoCloneMiddleware(),
+            ModelCallLimitMiddleware(run_limit=MODEL_CALL_RECURSION_LIMIT, exit_behavior="end"),
+            ToolErrorMiddleware(),
+            JiraPlanSyncMiddleware(),
+            check_message_queue_before_model,
+            SlackAssistantStatusMiddleware(),
+            ensure_no_empty_msg,
+            notify_step_limit_reached,
+            SandboxCircuitBreakerMiddleware(),
+            *fallback_middleware,
+            SanitizeThinkingBlocksMiddleware(),
+        ],
         skills=[
             "./skills/code-review/",
             "./skills/testing/",
             "./skills/documentation/",
         ],
-        backend=backend_factory,
         middleware=build_middleware_list(fallback_middleware),
     ).with_config(config)

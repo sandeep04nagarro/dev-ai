@@ -16,6 +16,8 @@ from .sandbox_circuit_breaker import SandboxCircuitBreakerMiddleware
 from .sanitize_thinking_blocks import SanitizeThinkingBlocksMiddleware
 from .sanitize_tool_inputs import SanitizeToolInputsMiddleware
 from .tool_error_handler import ToolErrorMiddleware
+from agent.middleware.multi_repo_clone import MultiRepoCloneMiddleware
+from agent.middleware.jira_plan_sync import JiraPlanSyncMiddleware
 
 MODEL_CALL_RECURSION_LIMIT = 5_000
 
@@ -34,6 +36,8 @@ __all__ = [
     "docker_cleanup_middleware",
     "ensure_no_empty_msg",
     "notify_step_limit_reached",
+    "MultiRepoCloneMiddleware",
+    "JiraPlanSyncMiddleware",
 ]
 
 
