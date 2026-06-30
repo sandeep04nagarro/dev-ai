@@ -33,6 +33,7 @@ from langchain.agents.middleware import ModelCallLimitMiddleware
 
 from .middleware import (
     ConsecutiveFailureBreakerMiddleware,
+    MODEL_CALL_RECURSION_LIMIT,
     SanitizeThinkingBlocksMiddleware,
     SanitizeToolInputsMiddleware,
     SlackAssistantStatusMiddleware,
@@ -50,7 +51,6 @@ from .server import (
     CONSECUTIVE_FAILURE_THRESHOLDS,
     DEFAULT_LLM_MAX_TOKENS,
     DEFAULT_RECURSION_LIMIT,
-    MODEL_CALL_RECURSION_LIMIT,
     _general_purpose_subagent,
     ensure_sandbox_for_thread,
     graph_loaded_for_execution,

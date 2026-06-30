@@ -12,21 +12,16 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-import os
 from langchain.agents.middleware.types import AgentMiddleware, AgentState
 from langchain_core.messages import ToolMessage
 from langgraph.config import get_config
 from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
-from langgraph_sdk import get_client
 
-from agent.utils.jira import post_jira_comment, update_jira_comment
+from agent.utils.jira import post_jira_comment
+from agent.utils.thread_ops import langgraph_client
 
 logger = logging.getLogger(__name__)
-
-LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL") or os.environ.get(
-    "LANGGRAPH_URL_PROD", "http://localhost:2024"
-)
 
 
 def _get_name(candidate: object) -> str | None:
@@ -82,8 +77,8 @@ async def _sync_todos_to_jira(request: ToolCallRequest) -> None:
         if not thread_id:
             return
 
-        langgraph_client = get_client(url=LANGGRAPH_URL)
-        thread = await langgraph_client.threads.get(thread_id)
+        client = langgraph_client()
+        thread = await client.threads.get(thread_id)
         metadata = thread.get("metadata", {}) if isinstance(thread, dict) else getattr(thread, "metadata", {})
 
         jira_issue_key = metadata.get("jira_issue_key")
@@ -104,21 +99,21 @@ async def _sync_todos_to_jira(request: ToolCallRequest) -> None:
         plan_comment_id = metadata.get("jira_plan_comment_id")
 
         if plan_comment_id:
-            # Update existing comment
-            success = await update_jira_comment(jira_issue_key, plan_comment_id, plan_body)
-            if success:
-                logger.info("Updated Jira plan comment %s for issue %s", plan_comment_id, jira_issue_key)
-            else:
-                logger.warning("Failed to update Jira plan comment %s for issue %s", plan_comment_id, jira_issue_key)
+            logger.info(
+                "Jira plan already synced as comment %s for issue %s; skipping updates to improve performance.",
+                plan_comment_id,
+                jira_issue_key,
+            )
+            return
+
+        # Post new comment and store ID
+        new_comment_id = await post_jira_comment(jira_issue_key, plan_body)
+        if new_comment_id:
+            metadata["jira_plan_comment_id"] = new_comment_id
+            await client.threads.update(thread_id, metadata=metadata)
+            logger.info("Posted new Jira plan comment %s for issue %s", new_comment_id, jira_issue_key)
         else:
-            # Post new comment and store ID
-            new_comment_id = await post_jira_comment(jira_issue_key, plan_body)
-            if new_comment_id:
-                metadata["jira_plan_comment_id"] = new_comment_id
-                await langgraph_client.threads.update(thread_id, metadata=metadata)
-                logger.info("Posted new Jira plan comment %s for issue %s", new_comment_id, jira_issue_key)
-            else:
-                logger.warning("Failed to post new Jira plan comment for issue %s", jira_issue_key)
+            logger.warning("Failed to post new Jira plan comment for issue %s", jira_issue_key)
 
     except Exception:
         logger.exception("Failed to sync todos to Jira")

@@ -1,3 +1,7 @@
+# This Dockerfile is used to build the image that is used in spinning up open-SWE containers
+# This image pre-installs `git` and the GitHub CLI so containers boot immediately with no runtime 
+# apt work. A one-time build is required before starting the server. 
+
 FROM python:3.14.0-slim-trixie
 
 ARG GH_VERSION=2.83.1

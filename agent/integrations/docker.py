@@ -1,4 +1,9 @@
-"""Docker sandbox backend integration."""
+"""Docker sandbox backend integration.
+This is a light weight docker sandbox implementation. A custom sandbox was implemented using docker 
+as a sandbox provider. The Docker sandbox provider gives each coding-agent task its own isolated 
+Linux container. When a task starts, a fresh container is created. When the task finishes, the 
+container is destroyed. If the same task receives follow-up messages, the agent reconnects to the 
+same container with all files intact."""
 
 from __future__ import annotations
 
