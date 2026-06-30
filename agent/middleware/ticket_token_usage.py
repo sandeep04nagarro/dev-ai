@@ -19,18 +19,16 @@ from langgraph.config import get_config
 from langgraph.runtime import Runtime
 from langgraph_sdk import get_client
 
+from agent.utils.config import TOKEN_USAGE_LOG_FILE
 from agent.utils.jira import post_jira_comment, update_jira_comment
 
 logger = logging.getLogger(__name__)
 
-_TOKEN_USAGE_LOG_FILE = os.environ.get("TOKEN_USAGE_LOG_FILE")
-if _TOKEN_USAGE_LOG_FILE is None and os.environ.get("TOKEN_USAGE_LOG") is not None:
-    _TOKEN_USAGE_LOG_FILE = os.path.join(os.getcwd(), "token_usage.log")
-if _TOKEN_USAGE_LOG_FILE:
-    _log_dir = os.path.dirname(os.path.abspath(_TOKEN_USAGE_LOG_FILE))
+if TOKEN_USAGE_LOG_FILE:
+    _log_dir = os.path.dirname(os.path.abspath(TOKEN_USAGE_LOG_FILE))
     if _log_dir:
         os.makedirs(_log_dir, exist_ok=True)
-    _handler = logging.FileHandler(_TOKEN_USAGE_LOG_FILE)
+    _handler = logging.FileHandler(TOKEN_USAGE_LOG_FILE)
     _handler.setLevel(logging.DEBUG)
     _handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
     logger.addHandler(_handler)
