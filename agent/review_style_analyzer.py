@@ -171,6 +171,11 @@ async def get_review_style_analyzer(config: RunnableConfig) -> Pregel:
         model=make_model(model_id, **model_kwargs),
         system_prompt=system_prompt,
         tools=[save_review_style_prompt],
+        skills=[
+            "./skills/code-review/",
+            "./skills/testing/",
+            "./skills/documentation/",
+        ],
         backend=sandbox_backend,
         middleware=[
             SanitizeToolInputsMiddleware(),

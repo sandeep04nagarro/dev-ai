@@ -25,7 +25,6 @@ from deepagents import create_deep_agent
 from deepagents.backends import LangSmithSandbox
 from deepagents.backends.protocol import SandboxBackendProtocol
 from deepagents.middleware.subagents import GENERAL_PURPOSE_SUBAGENT, SubAgent
-from langchain.agents.middleware import ModelCallLimitMiddleware
 from langchain_core.language_models import BaseChatModel
 from langsmith.sandbox import SandboxClientError
 
@@ -42,16 +41,8 @@ from .integrations.langsmith import _configure_github_proxy
 from .middleware import (
     MetadataLoggerHandler,
     ModelFallbackMiddleware,
-    SandboxCircuitBreakerMiddleware,
-    SanitizeThinkingBlocksMiddleware,
-    SanitizeToolInputsMiddleware,
-    SlackAssistantStatusMiddleware,
-    ToolErrorMiddleware,
-    check_message_queue_before_model,
-    ensure_no_empty_msg,
-    notify_step_limit_reached,
+    build_middleware_list,
 )
-from .middleware.jira_plan_sync import JiraPlanSyncMiddleware
 from .prompt import construct_system_prompt
 from .tools import (
     fetch_url,
@@ -345,7 +336,6 @@ async def ensure_sandbox_for_thread(thread_id: str) -> SandboxBackendProtocol:
 DEFAULT_LLM_MODEL_ID = DEFAULT_MODEL_ID
 DEFAULT_LLM_MAX_TOKENS = 64_000
 DEFAULT_RECURSION_LIMIT = 9_999
-MODEL_CALL_RECURSION_LIMIT = 5_000  # ~half the recursion limit to account for tool calls
 
 
 def _general_purpose_subagent(model: BaseChatModel) -> SubAgent:
@@ -544,18 +534,11 @@ async def get_agent(config: RunnableConfig) -> Pregel:
             slack_thread_reply,
         ],
         subagents=[_general_purpose_subagent(subagent_model)],
-        backend=backend_factory,
-        middleware=[
-            SanitizeToolInputsMiddleware(),
-            ModelCallLimitMiddleware(run_limit=MODEL_CALL_RECURSION_LIMIT, exit_behavior="end"),
-            ToolErrorMiddleware(),
-            JiraPlanSyncMiddleware(),
-            check_message_queue_before_model,
-            SlackAssistantStatusMiddleware(),
-            ensure_no_empty_msg,
-            notify_step_limit_reached,
-            SandboxCircuitBreakerMiddleware(),
-            *fallback_middleware,
-            SanitizeThinkingBlocksMiddleware(),
+        skills=[
+            "./skills/code-review/",
+            "./skills/testing/",
+            "./skills/documentation/",
         ],
+        backend=backend_factory,
+        middleware=build_middleware_list(fallback_middleware),
     ).with_config(config)
