@@ -38,14 +38,14 @@ from .dashboard.agent_overrides import (
 from .dashboard.options import DEFAULT_MODEL_ID, SUPPORTED_MODEL_IDS, model_supports_effort
 from .dashboard.team_settings import get_team_default_model, get_team_default_subagent_model
 from .integrations.langsmith import _configure_github_proxy
-from .middleware import (  # noqa: E402
+from agent.middleware import (  # noqa: E402
     ConsecutiveFailureBreakerMiddleware,
     MetadataLoggerHandler,
     ModelFallbackMiddleware,
     build_middleware_list,
 )
-from .middleware.jira_plan_sync import JiraPlanSyncMiddleware
-from .middleware.ticket_token_usage import TicketTokenUsageMiddleware
+from agent.middleware.jira_plan_sync import JiraPlanSyncMiddleware
+from agent.middleware.ticket_token_usage import TicketTokenUsageMiddleware
 from .prompt import construct_system_prompt
 from .tools import (
     fetch_url,
@@ -84,7 +84,7 @@ SANDBOX_CREATING = "__creating__"
 SANDBOX_CREATION_TIMEOUT = 180
 SANDBOX_POLL_INTERVAL = 1.0
 
-from .utils.sandbox_state import (
+from agent.utils.sandbox_state import (
     SANDBOX_BACKENDS,
     get_sandbox_id_from_metadata,
     set_sandbox_backend,

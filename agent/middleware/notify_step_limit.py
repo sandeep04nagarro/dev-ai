@@ -21,11 +21,11 @@ from langchain.agents.middleware import AgentState, after_agent
 from langgraph.config import get_config
 from langgraph.runtime import Runtime
 
-from ..utils.github_app import get_github_app_installation_token
-from ..utils.github_comments import post_github_comment
-from ..utils.github_token import get_github_token
-from ..utils.linear import comment_on_linear_issue
-from ..utils.slack import post_slack_thread_reply
+from agent.utils.github_app import get_github_app_installation_token
+from agent.utils.github_comments import post_github_comment
+from agent.utils.github_token import get_github_token
+from agent.utils.linear import comment_on_linear_issue
+from agent.utils.slack import post_slack_thread_reply
 
 logger = logging.getLogger(__name__)
 

@@ -31,7 +31,7 @@ warnings.filterwarnings("ignore", message=".*Pydantic V1.*", category=UserWarnin
 from deepagents import create_deep_agent
 from langchain.agents.middleware import ModelCallLimitMiddleware
 
-from .middleware import (
+from agent.middleware import (
     ConsecutiveFailureBreakerMiddleware,
     MODEL_CALL_RECURSION_LIMIT,
     SanitizeThinkingBlocksMiddleware,
@@ -46,7 +46,7 @@ from .reviewer_findings import (
 )
 from .reviewer_publish import fetch_pr_review_threads
 from .reviewer_reconcile import reconcile_findings_with_review_threads
-from .server import (
+from agent.server import (
     CONSECUTIVE_FAILURE_DEFAULT_THRESHOLD,
     CONSECUTIVE_FAILURE_THRESHOLDS,
     DEFAULT_LLM_MAX_TOKENS,
