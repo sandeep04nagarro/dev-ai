@@ -28,6 +28,12 @@ from deepagents.middleware.subagents import GENERAL_PURPOSE_SUBAGENT, SubAgent
 from langchain_core.language_models import BaseChatModel
 from langsmith.sandbox import SandboxClientError
 
+from agent.middleware import (  # noqa: E402
+    MetadataLoggerHandler,
+    ModelFallbackMiddleware,
+    build_server_middleware_list,
+)
+
 from .dashboard.agent_overrides import (
     load_profile,
     normalize_profile_overrides,
@@ -38,22 +44,6 @@ from .dashboard.agent_overrides import (
 from .dashboard.options import DEFAULT_MODEL_ID, SUPPORTED_MODEL_IDS, model_supports_effort
 from .dashboard.team_settings import get_team_default_model, get_team_default_subagent_model
 from .integrations.langsmith import _configure_github_proxy
-from agent.middleware import (
-    ExcludeToolsMiddleware,
-    JiraPlanSyncMiddleware,
-    MetadataLoggerHandler,
-    ModelFallbackMiddleware,
-    MultiRepoCloneMiddleware,
-    SandboxCircuitBreakerMiddleware,
-    SanitizeThinkingBlocksMiddleware,
-    SanitizeToolInputsMiddleware,
-    SlackAssistantStatusMiddleware,
-    ToolErrorMiddleware,
-    check_message_queue_before_model,
-    ensure_no_empty_msg,
-    notify_step_limit_reached,
-    build_middleware_list,
-)
 from .prompt import construct_system_prompt
 from .tools import (
     fetch_url,
@@ -92,7 +82,7 @@ SANDBOX_CREATING = "__creating__"
 SANDBOX_CREATION_TIMEOUT = 180
 SANDBOX_POLL_INTERVAL = 1.0
 
-from .utils.sandbox_state import (
+from agent.utils.sandbox_state import (
     SANDBOX_BACKENDS,
     get_sandbox_id_from_metadata,
     set_sandbox_backend,
@@ -545,25 +535,11 @@ async def get_agent(config: RunnableConfig) -> Pregel:
             slack_thread_reply,
         ],
         subagents=[_general_purpose_subagent(subagent_model)],
-        backend=backend_factory,
-        middleware=[
-            SanitizeToolInputsMiddleware(),
-            MultiRepoCloneMiddleware(),
-            ModelCallLimitMiddleware(run_limit=MODEL_CALL_RECURSION_LIMIT, exit_behavior="end"),
-            ToolErrorMiddleware(),
-            JiraPlanSyncMiddleware(),
-            check_message_queue_before_model,
-            SlackAssistantStatusMiddleware(),
-            ensure_no_empty_msg,
-            notify_step_limit_reached,
-            SandboxCircuitBreakerMiddleware(),
-            *fallback_middleware,
-            SanitizeThinkingBlocksMiddleware(),
-        ],
         skills=[
             "./skills/code-review/",
             "./skills/testing/",
             "./skills/documentation/",
         ],
-        middleware=build_middleware_list(fallback_middleware),
+        backend=backend_factory,
+        middleware=build_server_middleware_list(fallback_middleware),
     ).with_config(config)

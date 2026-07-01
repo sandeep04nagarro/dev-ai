@@ -133,7 +133,7 @@ To set up per-user OAuth:
 
 ### 4b. Build the sandbox Docker image
 
-For ` SANDBOX_TYPE=docker`, sandbox containers are created from `Dockerfile.sandbox` in the project root. This image pre-installs `git` and the GitHub CLI so containers boot immediately with no runtime apt work. A one-time build is required before starting the server.
+For  `SANDBOX_TYPE=docker`, sandbox containers are created from `Dockerfile.sandbox` in the project root. This image pre-installs `git` and the GitHub CLI so containers boot immediately with no runtime apt work. A one-time build is required before starting the server.
 
 ```bash
 # Build once (defaults to gh v2.83.1)

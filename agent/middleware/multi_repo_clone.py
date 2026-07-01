@@ -11,7 +11,7 @@ from langchain.agents.middleware.types import ModelCallResult, ModelRequest, Mod
 from langchain_core.messages import SystemMessage
 from langgraph.config import get_config
 
-from agent.utils.sandbox_state import ensure_sandbox_for_thread
+from agent.utils.sandbox_state import get_sandbox_backend
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +20,8 @@ async def _clone_repos_and_update_prompt(request: ModelRequest) -> None:
     configurable = config.get("configurable", {})
     metadata = config.get("metadata", {})
     selected_repos = metadata.get("selected_repos") or configurable.get("selected_repos")
+    for repo in selected_repos:
+        logger.info("%s", repo)
     
     if not selected_repos:
         return
@@ -34,7 +36,7 @@ async def _clone_repos_and_update_prompt(request: ModelRequest) -> None:
     try:
         thread_id = configurable.get("thread_id")
         if thread_id:
-            sandbox = await ensure_sandbox_for_thread(thread_id)
+            sandbox = await get_sandbox_backend(thread_id)
             
             # Clone each repo
             for repo_config in selected_repos:
@@ -43,7 +45,7 @@ async def _clone_repos_and_update_prompt(request: ModelRequest) -> None:
                 clone_path = f"/workspace/{name}"
                 
                 try:
-                    res = sandbox.execute(f"GH_TOKEN=dummy gh repo clone {owner}/{name} {clone_path}")
+                    res = await sandbox.aexecute(f"GH_TOKEN=dummy gh repo clone {owner}/{name} {clone_path}")
                     if res.exit_code != 0:
                         logger.warning("Failed to clone %s/%s: %s", owner, name, res.output)
                     else:

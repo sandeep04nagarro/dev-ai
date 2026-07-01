@@ -25,6 +25,19 @@ class AnthropicThinking(TypedDict, total=False):
 
 
 class ModelKwargs(TypedDict, total=False):
+    """Optional keyword arguments accepted by :func:`make_model`.
+
+    Fields accepted by all providers:
+    - ``max_tokens`` – generation token cap.
+    - ``reasoning`` – OpenAI o-series reasoning effort dict.
+    - ``thinking`` – Anthropic extended-thinking config.
+    - ``effort`` – Anthropic effort level.
+    - ``thinking_level`` – Gemini 3+ thinking level.
+    - ``temperature`` – sampling temperature.
+    - ``max_retries`` – transport retry cap.
+    - ``extra_body`` – provider-specific extra payload keys.
+    """
+
     max_tokens: int | None
     reasoning: OpenAIReasoning | None
     thinking: AnthropicThinking | None
@@ -32,6 +45,7 @@ class ModelKwargs(TypedDict, total=False):
     thinking_level: GoogleThinkingLevel | None
     temperature: float | None
     max_retries: int | None
+    extra_body: dict[str, object] | None
 
 
 _ANTHROPIC_EFFORTS: set[AnthropicEffort] = {"low", "medium", "high", "xhigh", "max"}
@@ -68,6 +82,20 @@ _KNOWN_PROVIDERS = {
 
 
 def make_model(model_id: str, **kwargs: Unpack[ModelKwargs]):
+    """Construct and return an ``init_chat_model`` instance for *model_id*.
+
+    The caller can pass any field from :class:`ModelKwargs`. Defaults
+    applied here:
+
+    * ``max_retries`` → :data:`DEFAULT_MAX_RETRIES` (very aggressive for
+      OpenRouter / OpenCode Zen models).
+    * For non-standard ``OPENAI_BASE_URL`` endpoints the Responses API
+      is disabled and the plain Chat Completions API is used.
+    * For DeepSeek V-series models, ``thinking`` is explicitly disabled
+      in ``extra_body`` because the model enables it by default, which
+      produces reasoning tokens that LangChain cannot round-trip and
+      causes 400 errors on subsequent requests.
+    """
     model_kwargs: dict[str, object] = kwargs.copy()
     model_kwargs.setdefault("max_retries", DEFAULT_MAX_RETRIES)
 
@@ -94,6 +122,13 @@ def make_model(model_id: str, **kwargs: Unpack[ModelKwargs]):
         # For non-standard OpenAI endpoints, we usually don't want to use the responses API
         if is_custom_openai:
             model_kwargs["use_responses_api"] = False
+            # DeepSeek V4 has thinking mode enabled by default, which returns
+            # reasoning_content that LangChain can't round-trip. Explicitly
+            # disable it to avoid 400 errors on subsequent requests.
+            if "deepseek" in actual_model.lower():
+                model_kwargs.setdefault("extra_body", {}).update(
+                    {"thinking": {"type": "disabled"}}
+                )
 
     return init_chat_model(model=actual_model, model_provider=model_provider, **model_kwargs)
 

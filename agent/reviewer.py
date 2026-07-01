@@ -29,29 +29,24 @@ warnings.filterwarnings("ignore", module="langchain_core._api.deprecation")
 warnings.filterwarnings("ignore", message=".*Pydantic V1.*", category=UserWarning)
 
 from deepagents import create_deep_agent
-from langchain.agents.middleware import ModelCallLimitMiddleware
 
-from .middleware import (
-    MODEL_CALL_RECURSION_LIMIT,
-    SanitizeThinkingBlocksMiddleware,
-    SanitizeToolInputsMiddleware,
-    SlackAssistantStatusMiddleware,
-    ToolErrorMiddleware,
-    check_message_queue_before_model,
+from agent.middleware import (
+    build_reviewer_middleware_list,
 )
-from .reviewer_diff import compute_diff_line_set, fetch_pr_diff
-from .reviewer_findings import (
-    list_findings as list_findings_async,
-)
-from .reviewer_publish import fetch_pr_review_threads
-from .reviewer_reconcile import reconcile_findings_with_review_threads
-from .server import (
+from agent.server import (
     DEFAULT_LLM_MAX_TOKENS,
     DEFAULT_RECURSION_LIMIT,
     _general_purpose_subagent,
     ensure_sandbox_for_thread,
     graph_loaded_for_execution,
 )
+
+from .reviewer_diff import compute_diff_line_set, fetch_pr_diff
+from .reviewer_findings import (
+    list_findings as list_findings_async,
+)
+from .reviewer_publish import fetch_pr_review_threads
+from .reviewer_reconcile import reconcile_findings_with_review_threads
 from .tools import (
     add_finding,
     fetch_url,
@@ -839,12 +834,5 @@ async def get_reviewer_agent(config: RunnableConfig) -> Pregel:
             "./skills/documentation/",
         ],
         backend=sandbox_backend,
-        middleware=[
-            SanitizeToolInputsMiddleware(),
-            ModelCallLimitMiddleware(run_limit=MODEL_CALL_RECURSION_LIMIT, exit_behavior="end"),
-            ToolErrorMiddleware(),
-            check_message_queue_before_model,
-            SlackAssistantStatusMiddleware(),
-            SanitizeThinkingBlocksMiddleware(),
-        ],
+        middleware=build_reviewer_middleware_list(),
     ).with_config(config)
