@@ -20,6 +20,8 @@ async def _clone_repos_and_update_prompt(request: ModelRequest) -> None:
     configurable = config.get("configurable", {})
     metadata = config.get("metadata", {})
     selected_repos = metadata.get("selected_repos") or configurable.get("selected_repos")
+    for repo in selected_repos:
+        logger.info("%s", repo)
     
     if not selected_repos:
         return
@@ -43,7 +45,7 @@ async def _clone_repos_and_update_prompt(request: ModelRequest) -> None:
                 clone_path = f"/workspace/{name}"
                 
                 try:
-                    res = sandbox.execute(f"GH_TOKEN=dummy gh repo clone {owner}/{name} {clone_path}")
+                    res = await sandbox.aexecute(f"GH_TOKEN=dummy gh repo clone {owner}/{name} {clone_path}")
                     if res.exit_code != 0:
                         logger.warning("Failed to clone %s/%s: %s", owner, name, res.output)
                     else:

@@ -17,4 +17,6 @@ def _resolve_log_path(log_file: str | None) -> str | None:
     return None
 
 TOKEN_USAGE_LOG : bool | None = False
-TOKEN_USAGE_LOG_FILE: str | None = _resolve_log_path("/home/nishchay/dev-AI/dev-ai/token_usage.log")
+TOKEN_USAGE_LOG_FILE: str | None = None
+
+# TOKEN_USAGE_LOG_FILE: str | None = _resolve_log_path("/home/nishchay/dev-AI/dev-ai/token_usage.log")
