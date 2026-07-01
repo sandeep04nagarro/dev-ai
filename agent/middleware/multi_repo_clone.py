@@ -11,7 +11,7 @@ from langchain.agents.middleware.types import ModelCallResult, ModelRequest, Mod
 from langchain_core.messages import SystemMessage
 from langgraph.config import get_config
 
-from agent.utils.sandbox_state import ensure_sandbox_for_thread
+from agent.utils.sandbox_state import get_sandbox_backend
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ async def _clone_repos_and_update_prompt(request: ModelRequest) -> None:
     try:
         thread_id = configurable.get("thread_id")
         if thread_id:
-            sandbox = await ensure_sandbox_for_thread(thread_id)
+            sandbox = await get_sandbox_backend(thread_id)
             
             # Clone each repo
             for repo_config in selected_repos:
