@@ -29,7 +29,7 @@ determine which repositories are needed to complete this task.
 - Issue Key: {issue_key}
 - Summary: {summary}
 - Description: {description}
-
+{triggering_comment_section}
 ## Repository Types Explained:
 - frontend: UI/UX code, React/Vue/Angular apps, CSS, static assets
 - backend: API servers, business logic, database models, services
@@ -39,16 +39,17 @@ determine which repositories are needed to complete this task.
 - docs: Documentation only
 
 ## Rules:
-1. Select ONLY repos that are necessary for this task.
-2. If task involves UI changes -> include frontend.
-3. If task involves API/logic changes -> include backend.
-4. If task involves cross-cutting concerns -> include both frontend AND backend.
-5. Always include 'shared' type repos if any other repo is selected (they contain common types/utils).
-6. If unsure, prefer to include more repos than less (we can filter later).
+1. Select ONLY repos that are strictly necessary for this task.
+2. If the user explicitly mentions a specific repo by name or type, select ONLY that repo (plus any 'shared' repos).
+3. If task involves only UI changes -> include only frontend.
+4. If task involves only API/logic changes -> include only backend.
+5. If task involves cross-cutting concerns across both frontend and backend -> include both.
+6. Always include 'shared' type repos if any other repo is selected (they contain common types/utils).
+7. When in doubt, prefer fewer repos. Only include a repo if there is a clear reason from the task description.
 
 ## Output Format:
 Return ONLY a JSON array of the required repository names. Do not include any markdown formatting, backticks, or other text.
-Example: ["webapp-frontend", "webapp-backend"]
+Example: ["webapp-backend"]
 """
 
 async def select_repos_for_ticket(
@@ -56,6 +57,7 @@ async def select_repos_for_ticket(
     issue_key: str,
     summary: str,
     description: str,
+    triggering_comment: str = "",
 ) -> list[RepoConfig]:
     """Select the appropriate repositories for a given Jira ticket."""
     available_repos = await get_project_repos(project_key)
@@ -77,11 +79,24 @@ async def select_repos_for_ticket(
         for r in available_repos
     )
     
+    # Build the triggering comment section only if we have one
+    triggering_comment_section = ""
+    if triggering_comment:
+        triggering_comment_section = (
+            f"## Triggering Comment (most recent user request):\n"
+            f"{triggering_comment}\n\n"
+            f"**IMPORTANT**: The triggering comment is the most recent user request "
+            f"and takes priority over the issue summary/description for repo selection. "
+            f"If the user mentions a specific repo or type of repo in their comment, "
+            f"select ONLY that repo.\n\n"
+        )
+    
     system_prompt = REPO_SELECTION_PROMPT.format(
         repo_list=repo_list_str,
         issue_key=issue_key,
         summary=summary,
         description=description,
+        triggering_comment_section=triggering_comment_section,
     )
     
     try:

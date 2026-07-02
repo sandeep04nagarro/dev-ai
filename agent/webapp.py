@@ -1441,6 +1441,7 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
             issue_key=issue_key,
             summary=summary,
             description=description,
+            triggering_comment=comment_body,
         )
 
     if not selected_repos:
