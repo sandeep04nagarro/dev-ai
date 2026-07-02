@@ -1,4 +1,12 @@
-"""Middleware to clone multiple repos into the sandbox and update the system prompt."""
+"""Middleware to inject multi-repo context into the system prompt.
+
+When multiple repositories are selected for a Jira ticket, this middleware
+appends a "Multi-Repository Workspace" section to the system prompt so the
+agent knows which repos to clone and where to place them.
+
+Actual cloning is handled by the agent itself via its normal Repository Setup
+flow (which already has proper GitHub authentication).
+"""
 
 from __future__ import annotations
 
@@ -7,92 +15,79 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware
-from langchain.agents.middleware.types import ModelCallResult, ModelRequest, ModelResponse
+from langchain.agents.middleware.types import ModelRequest, ModelResponse
 from langchain_core.messages import SystemMessage
 from langgraph.config import get_config
 
-from agent.utils.sandbox_state import get_sandbox_backend
-
 logger = logging.getLogger(__name__)
 
-async def _clone_repos_and_update_prompt(request: ModelRequest) -> None:
-    config = get_config()
-    configurable = config.get("configurable", {})
-    metadata = config.get("metadata", {})
-    selected_repos = metadata.get("selected_repos") or configurable.get("selected_repos")
-    for repo in selected_repos:
-        logger.info("%s", repo)
-    
-    if not selected_repos:
-        return
-        
-    has_cloned = metadata.get("has_cloned_multi_repos", False)
-    if has_cloned:
-        return
-        
-    logger.info("MultiRepoCloneMiddleware: Initializing %d repos in sandbox", len(selected_repos))
-    
-    # Ensure sandbox
-    try:
-        thread_id = configurable.get("thread_id")
-        if thread_id:
-            sandbox = await get_sandbox_backend(thread_id)
-            
-            # Clone each repo
-            for repo_config in selected_repos:
-                owner = repo_config["owner"]
-                name = repo_config["name"]
-                clone_path = f"/workspace/{name}"
-                
-                try:
-                    res = await sandbox.aexecute(f"GH_TOKEN=dummy gh repo clone {owner}/{name} {clone_path}")
-                    if res.exit_code != 0:
-                        logger.warning("Failed to clone %s/%s: %s", owner, name, res.output)
-                    else:
-                        logger.info("Successfully cloned %s/%s to %s", owner, name, clone_path)
-                except Exception as e:
-                    logger.exception("Error cloning %s/%s: %s", owner, name, e)
-    except Exception as e:
-         logger.exception("Failed to initialize sandbox in multi-repo middleware: %s", e)
-    
-    # Inject REPOS_CONTEXT into system prompt
-    if request.messages and isinstance(request.messages[0], SystemMessage):
-        original_sys = request.messages[0].content
-        
-        repo_context = "\\n\\n## Multi-Repository Workspace\\n"
-        repo_context += "You have access to multiple repositories in this shared workspace:\\n"
-        for repo in selected_repos:
-            repo_context += f"- **{repo['name']}** (Type: {repo.get('type', 'unknown')}): Located at `/workspace/{repo['name']}`\\n"
-        
-        repo_context += "\\nMake sure to navigate to the correct directory when running commands or editing files."
-        
-        new_sys_content = f"{original_sys}{repo_context}"
-        # We replace the content
-        request.messages[0].content = new_sys_content
-        
-    metadata["has_cloned_multi_repos"] = True
-    config["metadata"] = metadata
 
-def _clone_repos_and_update_prompt_sync(request: ModelRequest) -> None:
-    import asyncio
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        asyncio.run(_clone_repos_and_update_prompt(request))
+def _inject_multi_repo_prompt(request: ModelRequest, selected_repos: list[dict[str, Any]]) -> None:
+    """Append multi-repo workspace context to the system prompt (in-place)."""
+    if not request.messages or not isinstance(request.messages[0], SystemMessage):
         return
-    
-    loop = asyncio.get_running_loop()
-    loop.create_task(_clone_repos_and_update_prompt(request))
+
+    original_sys = request.messages[0].content
+
+    repo_context = "\n\n## Multi-Repository Workspace\n"
+    repo_context += "You have access to multiple repositories for this task. "
+    repo_context += "Clone each of them into your workspace using `gh repo clone`:\n"
+    for repo in selected_repos:
+        repo_context += (
+            f"- **{repo['name']}** (Type: {repo.get('type', 'unknown')}): "
+            f"`gh repo clone {repo['owner']}/{repo['name']}` → `/workspace/{repo['name']}`\n"
+        )
+    repo_context += (
+        "\nMake sure to navigate to the correct repository directory "
+        "when running commands or editing files."
+    )
+
+    request.messages[0].content = f"{original_sys}{repo_context}"
+
 
 class MultiRepoCloneMiddleware(AgentMiddleware):
-    """Middleware to clone selected repos into the sandbox and inject them into the system prompt."""
+    """Middleware to inject multi-repo context into the system prompt.
+
+    This runs inside ``awrap_model_call`` because the system prompt is only
+    available via ``ModelRequest.messages[0]`` (it is NOT part of the agent
+    ``state``), so hooks like ``abefore_agent`` cannot modify it.
+
+    A ``_has_injected`` guard ensures the injection happens at most once per
+    agent run, on the very first model call.
+    """
+
+    def __init__(self) -> None:
+        self._has_injected = False
+
+    def _try_inject(self, request: ModelRequest) -> None:
+        """Inject multi-repo context into the system prompt exactly once."""
+        if self._has_injected:
+            return
+
+        config = get_config()
+        configurable = config.get("configurable", {})
+        metadata = config.get("metadata", {})
+        # Prefer configurable (per-run) over metadata (thread-level, possibly stale)
+        selected_repos = configurable.get("selected_repos") or metadata.get("selected_repos")
+
+        if not selected_repos:
+            # Nothing to inject — mark as done so we don't re-check.
+            self._has_injected = True
+            return
+
+        logger.info(
+            "MultiRepoCloneMiddleware: Injecting %d repos into system prompt",
+            len(selected_repos),
+        )
+        _inject_multi_repo_prompt(request, selected_repos)
+        self._has_injected = True
 
     def wrap_model_call(
         self,
         request: ModelRequest,
         handler: Callable[[ModelRequest], ModelResponse],
-    ) -> ModelCallResult:
-        _clone_repos_and_update_prompt_sync(request)
+    ) -> ModelResponse:
+        self._try_inject(request)
         return handler(request)
 
     async def awrap_model_call(
@@ -100,5 +95,5 @@ class MultiRepoCloneMiddleware(AgentMiddleware):
         request: ModelRequest,
         handler: Callable[[ModelRequest], Awaitable[ModelResponse]],
     ) -> Any:
-        await _clone_repos_and_update_prompt(request)
+        self._try_inject(request)
         return await handler(request)
