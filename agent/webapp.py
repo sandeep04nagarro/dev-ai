@@ -73,8 +73,9 @@ from .utils.jira_project_repo_map import JIRA_PROJECT_TO_REPO
 from .utils.linear import post_linear_trace_comment
 from .utils.linear_team_repo_map import LINEAR_TEAM_TO_REPO
 from .utils.multimodal import dedupe_urls, extract_image_urls, fetch_image_block
-from agent.utils.repo import extract_repo_from_text, extract_repos_from_text
 from agent.utils.repo_selector import select_repos_for_ticket
+from agent.utils.repo import extract_repo_from_text
+from agent.utils.complexity_classifier import run_layer_0, ticket_hash, parse_recon_output, decide_tier
 from .utils.sandbox import validate_sandbox_startup_config
 from .utils.slack import (
     GitHubPrRef,
@@ -100,6 +101,9 @@ from .utils.slack_feedback import (
 from .utils.thread_ops import is_thread_active, queue_message_for_thread
 
 logger = logging.getLogger(__name__)
+
+if os.getenv("DEBUG_MODE", "").lower() in ("on", "1", "true"):
+    logger.setLevel(logging.DEBUG)
 
 
 @asynccontextmanager
@@ -1428,7 +1432,7 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
     project_key = issue_key.split("-")[0] if "-" in issue_key else ""
     
     # Resolve repos from comment body (if any) first
-    selected_repos = extract_repos_from_text(comment_body, default_owner=DEFAULT_REPO_OWNER)
+    selected_repos = extract_repo_from_text(comment_body, default_owner=DEFAULT_REPO_OWNER)
     
     if not selected_repos:
         fields = issue.get("fields", {})
@@ -1671,9 +1675,11 @@ async def process_jira_issue(
 
     comments = full_issue.get("comments", [])
     
-    # Extract attachments
     attachments = fields.get("attachment") or webhook_fields.get("attachment") or []
-    
+
+    # Use the first repo as the primary 'repo' config (defined early for recon)
+    primary_repo = selected_repos[0] if selected_repos else {}
+
     # Ensure the triggering comment is in the list if it's a new comment event
     if triggering_comment and not any(c.get("body") == triggering_comment for c in comments):
         comments.append({
@@ -1685,6 +1691,109 @@ async def process_jira_issue(
     creator = fields.get("creator") or webhook_fields.get("creator") or {}
     user_name = creator.get("displayName", "")
     user_email = creator.get("emailAddress", "")
+
+    # Initialize common values for recon/main flows
+    langgraph_client = get_client(url=LANGGRAPH_URL)
+    run_metadata = {
+        **_AGENT_VERSION_METADATA,
+        "langfuse_session_id": issue_key,
+        "langfuse_trace_name": f"Jira: {issue_key} - {title[:60]}",
+        "langfuse_user_id": author_email or author_name,
+    }
+
+    # Layer 0: Static tier check
+    tier = run_layer_0(fields)
+    logger.debug("Layer 0 tier=%s, RECON_ENABLED=%s, issue_key=%s",
+                 tier, os.environ.get("RECON_ENABLED", "false"), issue_key)
+
+    # Recon orchestration: only if ambiguous AND RECON_ENABLED
+    recon_findings = None
+    if tier is None and os.environ.get("RECON_ENABLED", "false").lower() == "true":
+        logger.debug("Starting recon flow for %s — tier=ambiguous", issue_key)
+        # Build ticket context for recon agent
+        ticket_context = f"Issue: {issue_key}\nTitle: {title}\nDescription:\n{description}"
+        
+        # Check for existing recon findings via thread metadata
+        try:
+            existing_metadata = await langgraph_client.threads.get_metadata(thread_id)
+            existing_findings = existing_metadata.get("recon_findings") if existing_metadata else None
+            existing_ticket_hash = existing_metadata.get("recon_ticket_hash") if existing_metadata else None
+        except Exception:
+            existing_findings, existing_ticket_hash = None, None
+        
+        current_ticket_hash = ticket_hash(description, comments)
+        
+        if existing_findings and existing_ticket_hash == current_ticket_hash:
+            # Hash matches - reuse existing findings
+            recon_findings = existing_findings
+            logger.debug("Recon reuse — hash match, findings=%s", recon_findings)
+        else:
+            logger.debug(
+                "Recon fresh — existing_findings=%s, hash_match=%s",
+                bool(existing_findings),
+                existing_ticket_hash == current_ticket_hash if existing_ticket_hash else "N/A",
+            )
+            # Run reconnaissance agent
+            from agent.prompt import RECON_SCOPE_PROMPT
+            
+            prior_section = ""
+            if existing_findings:
+                prior_section = f"""\
+## Prior Reconnaissance Findings
+If these findings still apply to this ticket, confirm reuse and exit.
+
+```json
+{json.dumps(existing_findings, indent=2)}
+```"""
+            
+            recon_prompt = RECON_SCOPE_PROMPT.format(
+                ticket_context=ticket_context,
+                prior_findings_section=prior_section,
+            )
+            
+            recon_step_limit = int(os.environ.get("RECON_STEP_LIMIT", "20"))
+            recon_configurable = {
+                "repo": primary_repo,
+                "selected_repos": selected_repos,
+                "jira_issue": {
+                    "id": issue_id,
+                    "key": issue_key,
+                    "title": title,
+                },
+                "recon_step_limit": recon_step_limit,
+                "source": "jira",
+                "thread_id": thread_id,
+            }
+            
+            logger.debug(
+                "Invoking recon agent — thread_id=%s, step_limit=%d, model=%s",
+                thread_id, recon_step_limit, os.environ.get("RECON_MODEL_ID", "openai:gpt-4o-mini"),
+            )
+            recon_state = await langgraph_client.runs.wait(
+                thread_id,
+                "recon_agent",
+                input={"messages": [{"role": "user", "content": recon_prompt}]},
+                config={"configurable": recon_configurable, "metadata": run_metadata},
+                if_not_exists="create",
+            )
+            recon_findings = parse_recon_output(recon_state)
+            logger.debug("Recon agent result — findings=%s", recon_findings)
+            
+            # Store findings in thread metadata for future reuse
+            if recon_findings:
+                try:
+                    await langgraph_client.threads.update(
+                        thread_id,
+                        metadata={
+                            "recon_findings": recon_findings,
+                            "recon_ticket_hash": current_ticket_hash,
+                        },
+                    )
+                except Exception:
+                    pass
+        
+        tier = decide_tier(recon_findings, fields)
+        logger.debug("Tier after recon: %s", tier)
 
     prompt = build_jira_issue_prompt(
         selected_repos,
@@ -1712,20 +1821,22 @@ async def process_jira_issue(
         "user_email": user_email,
         "source": "jira",
     }
+    
+    # Set model based on tier (only when explicitly light)
+    if tier == "light":
+        configurable["agent_model_id"] = os.environ.get("RECON_MODEL_ID", "openai:gpt-4o-mini")
+        configurable["agent_effort"] = "low"
+        logger.debug("Set light model: %s", configurable["agent_model_id"])
+    
+    if recon_findings:
+        configurable["recon_findings"] = recon_findings
 
-    langgraph_client = get_client(url=LANGGRAPH_URL)
     thread_active = await is_thread_active(thread_id)
     if thread_active:
         logger.info("Thread %s is active, queuing Jira message", thread_id)
         await queue_message_for_thread(thread_id, prompt)
     else:
         logger.info("Creating LangGraph run for thread %s from Jira", thread_id)
-        run_metadata = {
-            **_AGENT_VERSION_METADATA,
-            "langfuse_session_id": issue_key,
-            "langfuse_trace_name": f"Jira: {issue_key} - {title[:60]}",
-            "langfuse_user_id": author_email or author_name,
-        }
         await langgraph_client.runs.create(
             thread_id,
             "agent",

@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from pathlib import Path
@@ -420,24 +421,71 @@ SYSTEM_PROMPT_TEMPLATE = (
 )
 
 
+RECON_SCOPE_PROMPT = """\
+You are a read-only reconnaissance agent. Analyze the codebase to determine 
+the scope of changes needed for the attached ticket. You MUST NOT modify, 
+write, or create any files.
+
+## Current Ticket
+{ticket_context}
+
+{prior_findings_section}
+
+## Task
+1. Use `ls`, `glob`, `grep`, and `read_file` to find relevant files.
+2. Identify affected modules and their relationships.
+3. Assess scope: narrow (1-2 files), cross-cutting (shared modules), or wide.
+4. If prior findings exist and still apply, set status="reuse_confirmed" and exit.
+5. Output your findings as JSON in a fenced code block at the end.
+
+## Output Schema
+```json
+{{
+  "status": "reuse_confirmed" | "fresh_exploration",
+  "files_touched": ["path/to/file.py"],
+  "modules": ["auth"],
+  "scope": "narrow|cross-cutting|wide|uncertain",
+  "complexity": "simple|moderate|complex",
+  "keywords": ["token", "session"],
+  "steps_used": 12,
+  "summary": "<findings summary>",
+  "reuse_reason": "<only if status=reuse_confirmed>"
+}}
+```
+
+Do not add any text after the JSON block.
+"""
+
+RECON_FINDINGS_SECTION = """---
+
+### Prior Reconnaissance
+
+The following exploration was already completed on this ticket:
+
+```json
+{recon_findings_json}
+```
+
+Use these findings to accelerate your work, but verify if anything has changed."""
+
+
 def construct_system_prompt(
     working_dir: str,
     linear_project_id: str = "",
     linear_issue_number: str = "",
     triggering_user_identity: CollaboratorIdentity | None = None,
     create_prs: bool = False,
+    recon_summary: dict | None = None,
 ) -> str:
     default_prompt_section = _load_default_prompt()
 
-    # Determine GitHub auth prefix based on sandbox type
     sandbox_type = os.getenv("SANDBOX_TYPE", "langsmith")
     if sandbox_type == "langsmith":
         gh_auth_prefix = "GH_TOKEN=dummy "
     else:
-        # For local dev without a proxy, use the environment's GH_TOKEN directly
         gh_auth_prefix = ""
 
-    return SYSTEM_PROMPT_TEMPLATE.format(
+    prompt = SYSTEM_PROMPT_TEMPLATE.format(
         working_dir=working_dir,
         gh_auth_prefix=gh_auth_prefix,
         linear_project_id=linear_project_id or "<PROJECT_ID>",
@@ -445,4 +493,76 @@ def construct_system_prompt(
         default_prompt_section=default_prompt_section,
         pr_policy_override_section=ALWAYS_CREATE_PR_SECTION if create_prs else "",
         collaboration_section=_render_collaboration_section(triggering_user_identity),
+    )
+
+    if recon_summary:
+        prompt += RECON_FINDINGS_SECTION.format(
+            recon_findings_json=json.dumps(recon_summary, indent=2)
+        )
+
+    return prompt
+
+
+REPO_SETUP_RECON_SECTION = """---
+
+### Repository Setup (Read-Only)
+
+Before starting your scope analysis:
+
+1. **Identify the repo** — Use task context to determine the repository.
+
+2. **Clone the repo** — Run `cd {working_dir} && {gh_auth_prefix}gh repo clone <owner>/<repo>` or `git clone https://$GH_TOKEN@github.com/owner/repo`
+
+3. **Explore** — Use `ls`, `glob`, `grep`, and `read_file` to explore the codebase.
+
+**You are READ-ONLY.** You must NOT modify, write, or create any files."""
+
+
+RECON_TOOL_USAGE_SECTION = """---
+
+### Tool Usage
+
+#### `execute`
+Run shell commands in the sandbox. Use for `gh` and `git` operations. Pass `timeout=<seconds>` for long-running commands (default: 300s).
+
+#### `fetch_url`
+Fetches a URL and converts HTML to markdown. Use for web pages. Synthesize the content into a response — never dump raw markdown. Only use for URLs provided by the user or discovered during exploration.
+
+#### `http_request`
+Make HTTP requests (GET, POST, PUT, DELETE, etc.) to APIs. Use this for API calls with custom headers, methods, params, or request bodies — not for fetching web pages.
+Do not use this tool for GitHub API calls. Use `{gh_auth_prefix}gh` in the sandbox for GitHub operations."""
+
+
+READ_ONLY_CONSTRAINT_SECTION = """---
+
+### Read-Only Constraint
+
+You are a **read-only reconnaissance agent**. You must:
+
+- **Only use read operations** — `ls`, `glob`, `grep`, `read_file`, and `execute` for exploration.
+- **Never write, edit, or create files.** Do not use `write_file`, `edit_file`, or `write_todos`.
+- **Never commit, push, or open pull requests.**
+- **Make high-quality, targeted tool calls** — each command should have a clear exploratory purpose.
+- **Only search for what is necessary** — avoid rabbit holes. Consider whether each action is needed for the scope analysis.
+
+Your output MUST be a JSON block describing the scope of the required changes."""
+
+
+RECON_SYSTEM_PROMPT_TEMPLATE = (
+    WORKING_ENV_SECTION
+    + REPO_SETUP_RECON_SECTION
+    + FILE_MANAGEMENT_SECTION
+    + RECON_TOOL_USAGE_SECTION
+    + TOOL_BEST_PRACTICES_SECTION
+    + CORE_BEHAVIOR_SECTION
+    + READ_ONLY_CONSTRAINT_SECTION
+)
+
+
+def construct_recon_system_prompt(working_dir: str) -> str:
+    sandbox_type = os.getenv("SANDBOX_TYPE", "langsmith")
+    gh_auth_prefix = "GH_TOKEN=dummy " if sandbox_type == "langsmith" else ""
+    return RECON_SYSTEM_PROMPT_TEMPLATE.format(
+        working_dir=working_dir,
+        gh_auth_prefix=gh_auth_prefix,
     )
