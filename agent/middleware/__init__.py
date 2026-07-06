@@ -20,7 +20,8 @@ from agent.middleware.sanitize_tool_inputs import SanitizeToolInputsMiddleware
 from agent.middleware.ticket_token_usage import TicketTokenUsageMiddleware
 from agent.middleware.tool_error_handler import ToolErrorMiddleware
 
-MODEL_CALL_RECURSION_LIMIT = 5_000
+MODEL_CALL_RECURSION_LIMIT = 5
+RECON_MODEL_CALL_RECURSION_LIMIT = 10
 
 CONSECUTIVE_FAILURE_THRESHOLDS: dict[str, int] = {
     "execute": 5,
@@ -92,7 +93,7 @@ def build_recon_middleware_list(
             thresholds=CONSECUTIVE_FAILURE_THRESHOLDS,
             default_threshold=CONSECUTIVE_FAILURE_DEFAULT_THRESHOLD,
         ),
-        ModelCallLimitMiddleware(run_limit=MODEL_CALL_RECURSION_LIMIT, exit_behavior="end"),
+        ModelCallLimitMiddleware(run_limit=RECON_MODEL_CALL_RECURSION_LIMIT, exit_behavior="end"),
         ToolErrorMiddleware(),
         TicketTokenUsageMiddleware(),
         JiraPlanSyncMiddleware(),
@@ -104,10 +105,10 @@ def build_recon_middleware_list(
         *fallback_middleware,
         SanitizeThinkingBlocksMiddleware(),
     ]
-    if os.environ.get("SANDBOX_TYPE", "langsmith") == "docker":
-        from .docker_cleanup import docker_cleanup_middleware
+    # if os.environ.get("SANDBOX_TYPE", "langsmith") == "docker":
+    #     from .docker_cleanup import docker_cleanup_middleware
 
-        middleware.append(docker_cleanup_middleware)
+    #     middleware.append(docker_cleanup_middleware)
     return middleware
 
 

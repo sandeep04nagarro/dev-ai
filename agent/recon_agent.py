@@ -14,7 +14,6 @@ from agent.middleware import (
 from agent.middleware.exclude_tools import ExcludeToolsMiddleware
 from agent.prompt import construct_recon_system_prompt
 from agent.server import (
-    DEFAULT_RECURSION_LIMIT,
     ensure_sandbox_for_thread,
     graph_loaded_for_execution,
 )
@@ -33,7 +32,6 @@ if os.getenv("DEBUG_MODE", "").lower() in ("on", "1", "true"):
 async def get_recon_agent(config: RunnableConfig) -> Pregel:
     """Reconnaissance agent for scope analysis before main agent run."""
     thread_id = config["configurable"].get("thread_id", None)
-    config["recursion_limit"] = DEFAULT_RECURSION_LIMIT
 
     if thread_id is None or not graph_loaded_for_execution(config):
         return create_deep_agent(
@@ -84,7 +82,7 @@ async def get_recon_agent(config: RunnableConfig) -> Pregel:
         trace_name=metadata.get("langfuse_trace_name") or configurable.get("langfuse_trace_name"),
     )
 
-    recon_step_limit = config["configurable"].get("recon_step_limit", 20)
+    # recon_step_limit = config["configurable"].get("recon_step_limit", 20)
     return create_deep_agent(
         model=model,
         system_prompt=system_prompt,
@@ -94,4 +92,4 @@ async def get_recon_agent(config: RunnableConfig) -> Pregel:
             ExcludeToolsMiddleware(excluded=frozenset({"write_file", "edit_file", "write_todos"})),
             *build_recon_middleware_list(fallback_middleware),
         ],
-    ).with_config({**config, "recursion_limit": recon_step_limit + 10})
+    ).with_config(config)

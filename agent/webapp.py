@@ -1588,11 +1588,11 @@ def build_jira_issue_prompt(
     user_name: str,
 ) -> str:
     """Build the user prompt for a Jira issue-triggered run."""
-    triggered_by_line = f"## Triggered by: {user_name}\\n\\n" if user_name else ""
+    triggered_by_line = f"## Triggered by: {user_name}\n\n" if user_name else ""
     
     comments_text = ""
     if comments:
-        comments_text = "\\n\\n## Comments:\\n"
+        comments_text = "\n\n## Comments:\n"
         for comment in comments:
             author = (comment.get("author") or {}).get("displayName", "User")
             body = comment.get("body")
@@ -1600,14 +1600,14 @@ def build_jira_issue_prompt(
             
             if not extracted_body:
                 continue
-            comments_text += f"\\n**{author}:** {extracted_body}\\n"
+            comments_text += f"\n**{author}:** {extracted_body}\n"
 
     attachment_section = ""
     if attachments:
         attachment_section = (
-            "## Attachments\\n"
-            "This issue contains attachments. Please run the following commands to download them into your workspace before beginning your analysis:\\n\\n"
-            "```bash\\n"
+            "## Attachments\n"
+            "This issue contains attachments. Please run the following commands to download them into your workspace before beginning your analysis:\n\n"
+            "```bash\n"
         )
         jira_email = os.environ.get("JIRA_EMAIL", "")
         jira_token = os.environ.get("JIRA_API_TOKEN", "")
@@ -1615,27 +1615,88 @@ def build_jira_issue_prompt(
             url = att.get('content')
             filename = att.get('filename')
             if url and filename:
-                attachment_section += f"curl -sSL -u \\\"{jira_email}:{jira_token}\\\" -o \\\"{filename}\\\" \\\"{url}\\\"\\n"
-        attachment_section += "```\\n\\n"
+                attachment_section += f"curl -sSL -u \\\"{jira_email}:{jira_token}\\\" -o \\\"{filename}\\\" \\\"{url}\\\"\n"
+        attachment_section += "```\n\n"
 
     repos_section = "## Repositories\\nThis issue involves the following repositories:\\n"
     for r in selected_repos:
-        repos_section += f"- **{r['name']}** (Type: {r.get('type', 'unknown')}): {r['owner']}/{r['name']}\\n"
-    repos_section += "\\n"
+        repos_section += f"- **{r['name']}** (Type: {r.get('type', 'unknown')}): {r['owner']}/{r['name']}\n"
+    repos_section += "\n"
 
     return (
-        "Please work on the following Jira issue:\\n\\n"
+        "Please work on the following Jira issue:\n\n"
         f"{repos_section}"
         f"{triggered_by_line}"
-        f"## Jira Issue: {issue_key} - Issue ID: {issue_id}\\n\\n"
-        f"## Title: {title}\\n\\n"
-        f"## Description:\\n{description}\\n"
+        f"## Jira Issue: {issue_key} - Issue ID: {issue_id}\n\n"
+        f"## Title: {title}\n\n"
+        f"## Description:\n{description}\n"
         f"{attachment_section}"
-        f"{comments_text}\\n\\n"
+        f"{comments_text}\n\n"
         "Please analyze this issue and implement the necessary changes. "
         "BEFORE making any code changes, use the `write_todos` tool to formulate a step-by-step implementation plan. "
         "As you complete the tasks in your plan, use the `write_todos` tool again to check them off. "
         "When you need to communicate other updates on Jira, use the `jira_comment` tool."
+    )
+
+
+def build_recon_jira_issue_prompt(
+    selected_repos: list[dict[str, str]],
+    issue_key: str,
+    issue_id: str,
+    title: str,
+    description: str,
+    comments: list[dict[str, Any]],
+    attachments: list[dict[str, Any]],
+    prior_findings_section: str = "",
+    *,
+    user_name: str = "",
+) -> str:
+    """Build the user prompt for a reconnaissance run triggered by a Jira issue."""
+    from agent.prompt import RECON_SCOPE_PROMPT
+
+    triggered_by_line = f"## Triggered by: {user_name}\n\n" if user_name else ""
+
+    comments_text = ""
+    if comments:
+        comments_text = "\n\n## Comments:\n"
+        for comment in comments:
+            author = (comment.get("author") or {}).get("displayName", "User")
+            body = comment.get("body")
+            extracted_body = extract_adf_text(body)
+            if not extracted_body:
+                continue
+            comments_text += f"\n**{author}:** {extracted_body}\n"
+
+    attachment_section = ""
+    if attachments:
+        attachment_section = (
+            "## Attachments\n"
+            "This issue contains attachments. Run these commands to download them:\n\n"
+            "```bash\n"
+        )
+        jira_email = os.environ.get("JIRA_EMAIL", "")
+        jira_token = os.environ.get("JIRA_API_TOKEN", "")
+        for att in attachments:
+            url = att.get("content")
+            filename = att.get("filename")
+            if url and filename:
+                attachment_section += f"curl -sSL -u \"{jira_email}:{jira_token}\" -o \"{filename}\" \"{url}\"\n"
+        attachment_section += "```\n\n"
+
+    repos_section = ""
+    for r in selected_repos:
+        repos_section += f"- **{r['name']}** (Type: {r.get('type', 'unknown')}): {r['owner']}/{r['name']}\n"
+
+    return RECON_SCOPE_PROMPT.format(
+        repos_section=repos_section,
+        triggered_by_line=triggered_by_line,
+        issue_key=issue_key,
+        issue_id=issue_id,
+        title=title,
+        description=description,
+        attachment_section=attachment_section,
+        comments_text=comments_text,
+        prior_findings_section=prior_findings_section,
     )
 
 
@@ -1710,9 +1771,6 @@ async def process_jira_issue(
     recon_findings = None
     if tier is None and os.environ.get("RECON_ENABLED", "false").lower() == "true":
         logger.debug("Starting recon flow for %s — tier=ambiguous", issue_key)
-        # Build ticket context for recon agent
-        ticket_context = f"Issue: {issue_key}\nTitle: {title}\nDescription:\n{description}"
-        
         # Check for existing recon findings via thread metadata
         try:
             existing_metadata = await langgraph_client.threads.get_metadata(thread_id)
@@ -1734,8 +1792,6 @@ async def process_jira_issue(
                 existing_ticket_hash == current_ticket_hash if existing_ticket_hash else "N/A",
             )
             # Run reconnaissance agent
-            from agent.prompt import RECON_SCOPE_PROMPT
-            
             prior_section = ""
             if existing_findings:
                 prior_section = f"""\
@@ -1746,9 +1802,16 @@ If these findings still apply to this ticket, confirm reuse and exit.
 {json.dumps(existing_findings, indent=2)}
 ```"""
             
-            recon_prompt = RECON_SCOPE_PROMPT.format(
-                ticket_context=ticket_context,
+            recon_prompt = build_recon_jira_issue_prompt(
+                selected_repos=selected_repos,
+                issue_key=issue_key,
+                issue_id=issue_id,
+                title=title,
+                description=description,
+                comments=comments,
+                attachments=attachments,
                 prior_findings_section=prior_section,
+                user_name=user_name,
             )
             
             recon_step_limit = int(os.environ.get("RECON_STEP_LIMIT", "20"))

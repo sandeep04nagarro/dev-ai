@@ -181,6 +181,7 @@ def create_docker_sandbox(sandbox_id: str | None = None) -> DockerSandbox:
     if sandbox_id:
         try:
             container = client.containers.get(sandbox_id)
+            container.reload()
             logger.info(
                 "Reconnecting to existing container %s (status=%s)", sandbox_id, container.status
             )
