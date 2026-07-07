@@ -1776,7 +1776,8 @@ async def process_jira_issue(
             existing_metadata = await langgraph_client.threads.get_metadata(thread_id)
             existing_findings = existing_metadata.get("recon_findings") if existing_metadata else None
             existing_ticket_hash = existing_metadata.get("recon_ticket_hash") if existing_metadata else None
-        except Exception:
+        except Exception as e:
+            logger.info("could not find existing recon findings %s", e)
             existing_findings, existing_ticket_hash = None, None
         
         current_ticket_hash = ticket_hash(description, comments)

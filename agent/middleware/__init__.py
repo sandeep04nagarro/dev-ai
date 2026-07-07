@@ -13,6 +13,7 @@ from agent.middleware.jira_plan_sync import JiraPlanSyncMiddleware
 from agent.middleware.model_fallback import ModelFallbackMiddleware
 from agent.middleware.multi_repo_clone import MultiRepoCloneMiddleware
 from agent.middleware.notify_step_limit import notify_step_limit_reached
+from agent.middleware.recon_fallback import ReconFallbackMiddleware
 from agent.middleware.refresh_slack_status import SlackAssistantStatusMiddleware
 from agent.middleware.sandbox_circuit_breaker import SandboxCircuitBreakerMiddleware
 from agent.middleware.sanitize_thinking_blocks import SanitizeThinkingBlocksMiddleware
@@ -20,8 +21,8 @@ from agent.middleware.sanitize_tool_inputs import SanitizeToolInputsMiddleware
 from agent.middleware.ticket_token_usage import TicketTokenUsageMiddleware
 from agent.middleware.tool_error_handler import ToolErrorMiddleware
 
-MODEL_CALL_RECURSION_LIMIT = 5
-RECON_MODEL_CALL_RECURSION_LIMIT = 10
+MODEL_CALL_RECURSION_LIMIT = int(os.environ.get("MODEL_CALL_RECURSION_LIMIT",5_000)) or 5_000
+RECON_MODEL_CALL_RECURSION_LIMIT = int(os.environ.get("RECON_MODEL_CALL_RECURSION_LIMIT",5_000)) or 5_000
 
 CONSECUTIVE_FAILURE_THRESHOLDS: dict[str, int] = {
     "execute": 5,
@@ -36,6 +37,7 @@ __all__ = [
     "ExcludeToolsMiddleware",
     "JiraPlanSyncMiddleware",
     "ModelFallbackMiddleware",
+    "ReconFallbackMiddleware",
     "SanitizeThinkingBlocksMiddleware",
     "SanitizeToolInputsMiddleware",
     "TicketTokenUsageMiddleware",
@@ -104,11 +106,8 @@ def build_recon_middleware_list(
         SandboxCircuitBreakerMiddleware(),
         *fallback_middleware,
         SanitizeThinkingBlocksMiddleware(),
+        ReconFallbackMiddleware(),
     ]
-    # if os.environ.get("SANDBOX_TYPE", "langsmith") == "docker":
-    #     from .docker_cleanup import docker_cleanup_middleware
-
-    #     middleware.append(docker_cleanup_middleware)
     return middleware
 
 

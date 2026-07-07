@@ -67,17 +67,19 @@ def parse_recon_output(state: dict[str, Any]) -> dict[str, Any]:
     Recon agent outputs a fenced JSON block as its final message.
     This function extracts and validates that structure.
     """
+    for key,value in state.items():
+        logger.debug("%s : %.50s",key,value)
     values = state.get("values", {})
-    messages = values.get("messages", [])
+    messages = state.get("messages", [])
     logger.debug("parse_recon_output — messages_count=%d", len(messages))
 
     for idx, msg in enumerate(reversed(messages)):
-        if not isinstance(msg, dict) and msg.get("type") == "ai":
+        if not isinstance(msg, dict) or msg.get("type") != "ai":
             content = msg.get("content", "") or ""
-            logger.debug("%d - %s", idx, content)
+            logger.debug("%d - %.100s", idx, content)
             continue
         content = msg.get("content", "") or ""
-        logger.debug("%d - %s", idx, content)
+        logger.debug("this message is tagged AI %d - %.100s", idx, content)
         if "```json" in content:
             start = content.find("```json") + 7
             end = content.find("```", start)
@@ -116,6 +118,9 @@ def decide_tier(recon_findings: dict[str, Any] | None, jira_fields: dict[str, An
     """
     if recon_findings is None:
         return "light"
+
+    if recon_findings.get("status") == "interrupted":
+        return "heavy"
 
     scope = recon_findings.get("scope", "narrow")
     if scope in ("cross-cutting", "wide"):
