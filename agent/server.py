@@ -509,7 +509,6 @@ async def get_agent(config: RunnableConfig) -> Pregel:
 
     main_model = make_model(model_id, **model_kwargs)
     subagent_model = make_model(subagent_model_id, **subagent_model_kwargs)
-    recon_summary = (configurable or {}).get("recon_findings")
     return create_deep_agent(
         model=main_model,
         system_prompt=construct_system_prompt(
@@ -518,7 +517,6 @@ async def get_agent(config: RunnableConfig) -> Pregel:
             linear_issue_number=linear_issue_number,
             triggering_user_identity=triggering_user_identity,
             create_prs=always_create_prs,
-            recon_summary=recon_summary,
         ),
         tools=[
             http_request,

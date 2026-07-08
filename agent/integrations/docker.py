@@ -175,7 +175,7 @@ def create_docker_sandbox(sandbox_id: str | None = None) -> DockerSandbox:
     """
     client = docker.from_env()
 
-    _env_to_forward = ["GITHUB_TOKEN"]
+    _env_to_forward = ["GITHUB_TOKEN","GH_TOKEN"]
     container_env = {k: os.environ[k] for k in _env_to_forward if k in os.environ}
 
     if sandbox_id:

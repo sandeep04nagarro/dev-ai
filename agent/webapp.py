@@ -1586,6 +1586,7 @@ def build_jira_issue_prompt(
     attachments: list[dict[str, Any]],
     *,
     user_name: str,
+    recon_findings: dict | None = None,
 ) -> str:
     """Build the user prompt for a Jira issue-triggered run."""
     triggered_by_line = f"## Triggered by: {user_name}\n\n" if user_name else ""
@@ -1623,7 +1624,7 @@ def build_jira_issue_prompt(
         repos_section += f"- **{r['name']}** (Type: {r.get('type', 'unknown')}): {r['owner']}/{r['name']}\n"
     repos_section += "\n"
 
-    return (
+    prompt = (
         "Please work on the following Jira issue:\n\n"
         f"{repos_section}"
         f"{triggered_by_line}"
@@ -1637,6 +1638,14 @@ def build_jira_issue_prompt(
         "As you complete the tasks in your plan, use the `write_todos` tool again to check them off. "
         "When you need to communicate other updates on Jira, use the `jira_comment` tool."
     )
+
+    if recon_findings:
+        from agent.prompt import RECON_FINDINGS_SECTION
+        prompt += RECON_FINDINGS_SECTION.format(
+            recon_findings_json=json.dumps(recon_findings, indent=2)
+        )
+
+    return prompt
 
 
 def build_recon_jira_issue_prompt(
@@ -1772,13 +1781,16 @@ async def process_jira_issue(
     if tier is None and os.environ.get("RECON_ENABLED", "false").lower() == "true":
         logger.debug("Starting recon flow for %s — tier=ambiguous", issue_key)
         # Check for existing recon findings via thread metadata
+        existing_findings, existing_ticket_hash = None, None
         try:
-            existing_metadata = await langgraph_client.threads.get_metadata(thread_id)
-            existing_findings = existing_metadata.get("recon_findings") if existing_metadata else None
-            existing_ticket_hash = existing_metadata.get("recon_ticket_hash") if existing_metadata else None
+            existing_thread = await langgraph_client.threads.get(thread_id)
+            if isinstance(existing_thread, dict):
+                existing_metadata = existing_thread.get("metadata", {})
+                existing_findings = existing_metadata.get("recon_findings")
+                existing_ticket_hash = existing_metadata.get("recon_ticket_hash")
+                logger.debug("existing findings : %s", existing_findings)
         except Exception as e:
-            logger.info("could not find existing recon findings %s", e)
-            existing_findings, existing_ticket_hash = None, None
+            logger.debug("could not find existing recon findings %s", e)
         
         current_ticket_hash = ticket_hash(description, comments)
         
@@ -1802,6 +1814,7 @@ If these findings still apply to this ticket, confirm reuse and exit.
 ```json
 {json.dumps(existing_findings, indent=2)}
 ```"""
+            logger.debug("prior section for recon prompt : %s", prior_section)
             
             recon_prompt = build_recon_jira_issue_prompt(
                 selected_repos=selected_repos,
@@ -1853,8 +1866,9 @@ If these findings still apply to this ticket, confirm reuse and exit.
                             "recon_ticket_hash": current_ticket_hash,
                         },
                     )
+                    logger.debug("Successfully updated thread metadata to store recon_findings and recon_ticket_hash")
                 except Exception:
-                    pass
+                    logger.warning("Could not update thread metadata to store recon_findings and recon_ticket_hash")
         
         tier = decide_tier(recon_findings, fields)
         logger.debug("Tier after recon: %s", tier)
@@ -1868,6 +1882,7 @@ If these findings still apply to this ticket, confirm reuse and exit.
         comments,
         attachments,
         user_name=user_name,
+        recon_findings=recon_findings,
     )
 
     # Use the first repo as the primary 'repo' config to satisfy single-repo downstream checks, 
@@ -1892,9 +1907,6 @@ If these findings still apply to this ticket, confirm reuse and exit.
         configurable["agent_effort"] = "low"
         logger.debug("Set light model: %s", configurable["agent_model_id"])
     
-    if recon_findings:
-        configurable["recon_findings"] = recon_findings
-
     thread_active = await is_thread_active(thread_id)
     if thread_active:
         logger.info("Thread %s is active, queuing Jira message", thread_id)

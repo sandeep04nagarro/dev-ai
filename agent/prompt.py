@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 from pathlib import Path
@@ -487,7 +486,6 @@ def construct_system_prompt(
     linear_issue_number: str = "",
     triggering_user_identity: CollaboratorIdentity | None = None,
     create_prs: bool = False,
-    recon_summary: dict | None = None,
 ) -> str:
     default_prompt_section = _load_default_prompt()
 
@@ -497,7 +495,7 @@ def construct_system_prompt(
     else:
         gh_auth_prefix = ""
 
-    prompt = SYSTEM_PROMPT_TEMPLATE.format(
+    return SYSTEM_PROMPT_TEMPLATE.format(
         working_dir=working_dir,
         gh_auth_prefix=gh_auth_prefix,
         linear_project_id=linear_project_id or "<PROJECT_ID>",
@@ -506,13 +504,6 @@ def construct_system_prompt(
         pr_policy_override_section=ALWAYS_CREATE_PR_SECTION if create_prs else "",
         collaboration_section=_render_collaboration_section(triggering_user_identity),
     )
-
-    if recon_summary:
-        prompt += RECON_FINDINGS_SECTION.format(
-            recon_findings_json=json.dumps(recon_summary, indent=2)
-        )
-
-    return prompt
 
 
 RECON_INVARIANTS_SECTION = """---
