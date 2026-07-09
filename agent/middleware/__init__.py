@@ -4,10 +4,12 @@ from langchain.agents.middleware import ModelCallLimitMiddleware
 
 from agent.middleware.callback_metadata_logger import MetadataLoggerHandler
 from agent.middleware.check_message_queue import check_message_queue_before_model
+from agent.middleware.command_safety import CommandSafetyMiddleware
 from agent.middleware.consecutive_failure_breaker import ConsecutiveFailureBreakerMiddleware
 from agent.middleware.docker_cleanup import docker_cleanup_middleware
 from agent.middleware.ensure_no_empty_msg import ensure_no_empty_msg
 from agent.middleware.exclude_tools import ExcludeToolsMiddleware
+from agent.middleware.input_sanitization import InputSanitizationMiddleware
 from agent.middleware.jira_plan_sync import JiraPlanSyncMiddleware
 from agent.middleware.model_fallback import ModelFallbackMiddleware
 from agent.middleware.multi_repo_clone import MultiRepoCloneMiddleware
@@ -33,7 +35,9 @@ CONSECUTIVE_FAILURE_DEFAULT_THRESHOLD = 5
 
 __all__ = [
     "MetadataLoggerHandler",
+    "CommandSafetyMiddleware",
     "ConsecutiveFailureBreakerMiddleware",
+    "InputSanitizationMiddleware",
     "ExcludeToolsMiddleware",
     "JiraPlanSyncMiddleware",
     "ModelFallbackMiddleware",
@@ -60,6 +64,16 @@ def build_server_middleware_list(
     fallback_middleware: list[Any],
 ) -> list[Any]:
     middleware = [
+        # --- Security layer (runs first/outermost) -------------------------
+        # Sanitise untrusted Jira/GitHub prompt content against indirect prompt
+        # injection before any model call sees it. Idempotent, so safe on every
+        # model call.
+        InputSanitizationMiddleware(),
+        # Block destructive / exfiltration-class shell commands before they
+        # reach the Docker sandbox. Returns an error ToolMessage so the LLM
+        # can self-correct; DockerSandbox.execute() is a second backstop.
+        CommandSafetyMiddleware(),
+        # --- Existing tool/state hygiene ------------------------------------
         SanitizeToolInputsMiddleware(),
         MultiRepoCloneMiddleware(),
         ConsecutiveFailureBreakerMiddleware(
@@ -113,6 +127,10 @@ def build_recon_middleware_list(
 
 def build_reviewer_middleware_list() -> list[Any]:
     return [
+        # Security layer first: sanitise prompt injection and block dangerous
+        # shell commands even in the reviewer graph.
+        InputSanitizationMiddleware(),
+        CommandSafetyMiddleware(),
         SanitizeToolInputsMiddleware(),
         ConsecutiveFailureBreakerMiddleware(
             thresholds=CONSECUTIVE_FAILURE_THRESHOLDS,

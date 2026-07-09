@@ -54,7 +54,15 @@ class DockerSandbox(BaseSandbox):
         *,
         timeout: int | None = None,
     ) -> ExecuteResponse:
-        """Run a shell command inside the container via exec. Returns output and exit code."""
+        """Run a shell command inside the container via exec. Returns output and exit code.
+
+        A final defence-in-depth command check runs here so that a destructive
+        or secret-exfiltration command can never reach ``exec_run`` even if a
+        caller bypasses the agent-level :class:`CommandSafetyMiddleware`.
+        The check can be disabled with ``SANDBOX_DISABLE_COMMAND_GUARD=1`` for
+        debugging only.
+        """
+        _enforce_command_guard(command)
         try:
             exec_result = self._container.exec_run(
                 cmd=["sh", "-c", command],
@@ -149,6 +157,42 @@ def _extract_first_file_from_tar(tar_bytes: bytes) -> bytes:
                 if f:
                     return f.read()
     return b""
+
+class CommandBlockedError(SandboxClientError):
+    """Raised when a command is rejected by the security guard before exec.
+
+    Subclasses :class:`SandboxClientError` so existing error handling in
+    :mod:`agent.middleware.tool_error_handler` treats it as a recoverable
+    sandbox failure rather than an unhandled crash.
+    """
+
+
+def _enforce_command_guard(command: str) -> None:
+    """Defence-in-depth check run immediately before ``container.exec_run``.
+
+    The agent-level :class:`CommandSafetyMiddleware` already blocks dangerous
+    commands, but this second layer guarantees that *no* code path -- internal
+    helpers, subagents, or future callers -- can bypass it and reach the shell.
+    Set ``SANDBOX_DISABLE_COMMAND_GUARD=1`` to disable (debugging only).
+    """
+    if os.getenv("SANDBOX_DISABLE_COMMAND_GUARD", "").lower() in ("1", "true", "on", "yes"):
+        return
+    # Imported lazily to avoid an import cycle at module load time.
+    from agent.security.command_guard import evaluate_command
+
+    decision = evaluate_command(command)
+    if decision.allowed:
+        return
+    logger.warning(
+        "DockerSandbox command guard blocked command (category=%s reason=%s): %.200r",
+        decision.category,
+        decision.reason,
+        command,
+    )
+    raise CommandBlockedError(
+        f"Command blocked by sandbox security guard: {decision.reason} "
+        f"(category={decision.category})."
+    )
 
 
 def create_docker_sandbox(sandbox_id: str | None = None) -> DockerSandbox:
