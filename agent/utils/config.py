@@ -34,17 +34,17 @@ MODAL_APP_NAME: str = "open-swe"
 DAYTONA_SANDBOX_SNAPSHOT: str = "daytonaio/sandbox:0.6.0"
 
 # ── LangSmith (non-secret) ──
-LANGSMITH_URL_PROD: str = "https://smith.langchain.com"
-LANGSMITH_ENDPOINT: str = "https://api.smith.langchain.com"
-LANGSMITH_ENDPOINT_PROD: str = "https://api.smith.langchain.com"
-LANGSMITH_HOST_API_URL: str = "https://api.host.langchain.com"
-LANGSMITH_TENANT_ID_PROD: str = ""
-LANGSMITH_TRACING_PROJECT_ID_PROD: str = ""
+# LANGSMITH_URL_PROD: str = "https://smith.langchain.com"
+# LANGSMITH_ENDPOINT: str = "https://api.smith.langchain.com"
+# LANGSMITH_ENDPOINT_PROD: str = "https://api.smith.langchain.com"
+# LANGSMITH_HOST_API_URL: str = "https://api.host.langchain.com"
+# LANGSMITH_TENANT_ID_PROD: str = ""
+# LANGSMITH_TRACING_PROJECT_ID_PROD: str = ""
 
 # ── Jira (non-secret) ──
 JIRA_BOT_NAME: str = "Open SWE Agent"
-JIRA_DOMAIN: str = ""
-JIRA_PROJECT_TO_REPO: str = "{}"
+JIRA_DOMAIN: str = "nagarro-team-u6vtl9j6.atlassian.net"
+JIRA_PROJECT_TO_REPO: str = '{"DT":{"owner":"NishchayGuptaNagarro","name":"DSD-TEST"}}'
 
 # ── Slack (non-secret) ──
 SLACK_BOT_USER_ID: str = ""
@@ -80,7 +80,7 @@ MULTI_REPO_SELECTOR_FALLBACK: str = "all"
 MULTI_REPO_SELECTOR_ENABLED: bool = False
 
 # ── Debug ──
-DEBUG_MODE: bool = False
+DEBUG_MODE: bool = True
 
 # ── Prompt ──
 DEFAULT_PROMPT_PATH: str = str(Path(__file__).resolve().parent.parent.parent / "default_prompt.md")

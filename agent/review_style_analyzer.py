@@ -22,7 +22,7 @@ from deepagents import create_deep_agent
 from deepagents.backends.protocol import SandboxBackendProtocol
 from langchain.agents.middleware import ModelCallLimitMiddleware
 
-from .integrations.langsmith import _configure_github_proxy
+# from .integrations.langsmith import _configure_github_proxy
 from .middleware import SanitizeToolInputsMiddleware, ToolErrorMiddleware
 from .review_style_guidance import REVIEWER_STYLE_THEMES
 from .server import (
@@ -95,14 +95,14 @@ The user message may include pre-collected samples — verify and extend with ``
 """
 
 
-async def _configure_sandbox_github_proxy(
-    sandbox_backend: SandboxBackendProtocol,
-    github_token: str,
-) -> None:
-    if cfg.SANDBOX_TYPE != "langsmith":
-        return
-    backend = unwrap_sandbox_backend(sandbox_backend)
-    await asyncio.to_thread(_configure_github_proxy, backend.id, github_token)
+# async def _configure_sandbox_github_proxy(
+#     sandbox_backend: SandboxBackendProtocol,
+#     github_token: str,
+# ) -> None:
+#     if cfg.SANDBOX_TYPE != "langsmith":
+#         return
+#     backend = unwrap_sandbox_backend(sandbox_backend)
+#     await asyncio.to_thread(_configure_github_proxy, backend.id, github_token)
 
 
 async def get_review_style_analyzer(config: RunnableConfig) -> Pregel:
@@ -124,8 +124,8 @@ async def get_review_style_analyzer(config: RunnableConfig) -> Pregel:
     owner, _, name = full_name.partition("/")
     samples_text = str(configurable.get("review_style_samples_text") or "")
     github_token = configurable.get("review_style_github_token")
-    if isinstance(github_token, str) and github_token:
-        await _configure_sandbox_github_proxy(sandbox_backend, github_token)
+    # if isinstance(github_token, str) and github_token:
+    #     await _configure_sandbox_github_proxy(sandbox_backend, github_token)
 
     model_id = cfg.LLM_MODEL_ID or DEFAULT_LLM_MODEL_ID
     if cfg.LLM_MODEL_ID:

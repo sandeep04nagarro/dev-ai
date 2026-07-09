@@ -53,7 +53,8 @@ from agent.utils import config as cfg
 from .utils.auth import (
     is_bot_token_only_mode,
     persist_encrypted_github_token,
-    resolve_github_token_from_email,
+    # resolve_github_token_from_email,
+    resolve_github_token
 )
 from .utils.authorship import OPEN_SWE_BOT_NAME
 from .utils.comments import get_recent_comments
@@ -81,12 +82,12 @@ from .utils.github_user_email_map import GITHUB_USER_EMAIL_MAP
 from agent.utils.jira import (
     extract_adf_text,
     fetch_jira_issue_details,
-    post_jira_trace_comment,
+    # post_jira_trace_comment,
 )
-from .utils.linear import post_linear_trace_comment
+# from .utils.linear import post_linear_trace_comment
 from .utils.linear_team_repo_map import LINEAR_TEAM_TO_REPO
 from .utils.multimodal import dedupe_urls, extract_image_urls, fetch_image_block
-from .utils.sandbox import validate_sandbox_startup_config
+# from .utils.sandbox import validate_sandbox_startup_config
 from .utils.slack import (
     GitHubPrRef,
     fetch_slack_thread_messages,
@@ -95,7 +96,7 @@ from .utils.slack import (
     get_slack_user_names,
     parse_github_pr_url,
     post_slack_thread_reply,
-    post_slack_trace_reply,
+    # post_slack_trace_reply,
     resolve_slack_links_in_context,
     select_slack_context_messages,
     set_slack_assistant_status,
@@ -116,13 +117,15 @@ if cfg.DEBUG_MODE:
     logger.setLevel(logging.DEBUG)
 
 
-@asynccontextmanager
-async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    validate_sandbox_startup_config()
-    yield
+# @asynccontextmanager
+# async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+#     # validate_sandbox_startup_config()
+#     yield
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    # lifespan=lifespan
+    )
 
 DASHBOARD_ALLOWED_ORIGINS: list[str] = [
     o.strip() for o in cfg.DASHBOARD_ALLOWED_ORIGINS.split(",") if o.strip()
@@ -153,7 +156,7 @@ SLACK_REPO_NAME = cfg.SLACK_REPO_NAME or cfg.DEFAULT_REPO_NAME
 LANGGRAPH_URL = cfg.LANGGRAPH_URL
 
 _AGENT_VERSION_METADATA: dict[str, str] = (
-    {"LANGSMITH_AGENT_VERSION": cfg.LANGCHAIN_REVISION_ID} if cfg.LANGCHAIN_REVISION_ID else {}
+    {"AGENT_VERSION": cfg.LANGCHAIN_REVISION_ID} if cfg.LANGCHAIN_REVISION_ID else {}
 )
 
 ALLOWED_GITHUB_ORGS: frozenset[str] = frozenset(
@@ -784,8 +787,8 @@ async def process_linear_issue(  # noqa: PLR0912, PLR0915
             logger.info("Message queued for thread %s, will be processed by middleware", thread_id)
             langgraph_client = get_client(url=LANGGRAPH_URL)
             runs = await langgraph_client.runs.list(thread_id, limit=1)
-            if runs:
-                await post_linear_trace_comment(issue_id, thread_id, triggering_comment_id)
+            # if runs:
+            #     await post_linear_trace_comment(issue_id, thread_id, triggering_comment_id)
         else:
             logger.error("Failed to queue message for thread %s", thread_id)
     else:
@@ -804,7 +807,7 @@ async def process_linear_issue(  # noqa: PLR0912, PLR0915
             if_not_exists="create",
         )
         logger.info("LangGraph run created successfully for thread %s", thread_id)
-        await post_linear_trace_comment(issue_id, thread_id, triggering_comment_id)
+        # await post_linear_trace_comment(issue_id, thread_id, triggering_comment_id)
 
 
 async def process_slack_mention(event_data: dict[str, Any], repo_config: dict[str, str]) -> None:
@@ -974,17 +977,17 @@ async def process_slack_mention(event_data: dict[str, Any], repo_config: dict[st
     )
     run_id = run.get("run_id")
     if is_first_mention:
-        trace_message_ts = await post_slack_trace_reply(channel_id, thread_ts, thread_id)
+        # trace_message_ts = await post_slack_trace_reply(channel_id, thread_ts, thread_id)
         await set_slack_assistant_status(channel_id, thread_ts)
-        if isinstance(run_id, str) and run_id:
-            await store_slack_run_mapping(
-                langgraph_client,
-                channel_id,
-                thread_ts,
-                run_id,
-                message_ts=trace_message_ts,
-                triggering_user_id=user_id,
-            )
+        # if isinstance(run_id, str) and run_id:
+        #     await store_slack_run_mapping(
+        #         langgraph_client,
+        #         channel_id,
+        #         thread_ts,
+        #         run_id,
+        #         message_ts=trace_message_ts,
+        #         triggering_user_id=user_id,
+        #     )
     else:
         logger.info(
             "Skipping Slack trace reply for thread %s — agent will reply when run completes",
@@ -1013,7 +1016,7 @@ async def process_slack_pr_review_request(
     if result.get("success"):
         thread_id = result.get("thread_id")
         if isinstance(thread_id, str) and thread_id:
-            await post_slack_trace_reply(channel_id, thread_ts, thread_id)
+            # await post_slack_trace_reply(channel_id, thread_ts, thread_id)
             await set_slack_assistant_status(channel_id, thread_ts)
         return
 
@@ -1939,7 +1942,7 @@ If these findings still apply to this ticket, confirm reuse and exit.
             config={"configurable": configurable, "metadata": run_metadata},
             if_not_exists="create",
         )
-        await post_jira_trace_comment(issue_key or issue_id, thread_id)
+        # await post_jira_trace_comment(issue_key or issue_id, thread_id)
 
     try:
         await langgraph_client.threads.update(
@@ -2743,17 +2746,17 @@ async def process_github_push_event(payload: dict[str, Any]) -> None:
     await _store_current_reviewer_run_id(thread_id, run)
 
 
-async def _refresh_thread_github_token_after_401(thread_id: str, email: str) -> str | None:
+async def _refresh_thread_github_token_after_401(thread_id: str, config: Any) -> str | None:
     """Invalidate the cached token after a 401 and try to resolve a fresh one."""
     logger.warning(
         "GitHub returned 401 for thread %s; invalidating cached token and re-resolving",
         thread_id,
     )
     await invalidate_cached_github_token(thread_id)
-    return await _get_or_resolve_thread_github_token(thread_id, email)
+    return await _get_or_resolve_thread_github_token(thread_id, config)
 
 
-async def _get_or_resolve_thread_github_token(thread_id: str, email: str) -> str | None:
+async def _get_or_resolve_thread_github_token(thread_id: str, config: Any) -> str | None:
     """Resolve and persist a GitHub token for a thread when available.
 
     Skips the cached ciphertext when its ``github_token_expires_at`` is past.
@@ -2775,7 +2778,7 @@ async def _get_or_resolve_thread_github_token(thread_id: str, email: str) -> str
     if github_token:
         return github_token
 
-    auth_result = await resolve_github_token_from_email(email)
+    auth_result = await resolve_github_token(config=config, thread_id=thread_id)
     github_token = auth_result.get("token")
     if not github_token:
         return None
@@ -2810,6 +2813,22 @@ async def process_github_pr_comment(payload: dict[str, Any], event_type: str) ->
         node_id,
     ) = await extract_pr_context(payload, event_type)
     github_user_id = payload.get("sender", {}).get("id")
+
+    run_metadata = {
+        **_AGENT_VERSION_METADATA,
+        "langfuse_session_id": thread_id,
+        "langfuse_user_id": github_login or "unknown",
+    }
+    config={
+            "configurable": {
+                "source": "github",
+                "github_login": github_login,
+                "github_user_id": github_user_id,
+                "repo": repo_config,
+                "pr_number": pr_number,
+            },
+            "metadata": run_metadata,
+        }
 
     logger.info(
         "Processing GitHub PR comment: event=%s, pr=%s, branch=%s",
@@ -2848,7 +2867,7 @@ async def process_github_pr_comment(payload: dict[str, Any], event_type: str) ->
     is_review_request, _pr_url_override = parse_github_review_command(comment.get("body") or "")
     email = GITHUB_USER_EMAIL_MAP.get(github_login, "")
     if email:
-        github_token = await _get_or_resolve_thread_github_token(thread_id, email)
+        github_token = await _get_or_resolve_thread_github_token(thread_id, config)
     elif is_review_request:
         github_token, expires_at = await get_github_app_installation_token_with_expiry()
         if github_token:
@@ -2877,7 +2896,7 @@ async def process_github_pr_comment(payload: dict[str, Any], event_type: str) ->
                 node_id=node_id,
             )
         except GitHubAuthError:
-            github_token = await _refresh_thread_github_token_after_401(thread_id, email)
+            github_token = await _refresh_thread_github_token_after_401(thread_id, config)
             if not github_token:
                 logger.warning("Re-auth failed for thread %s after 401; skipping", thread_id)
                 return
@@ -2899,7 +2918,7 @@ async def process_github_pr_comment(payload: dict[str, Any], event_type: str) ->
             repo_config, pr_number, token=github_token
         )
     except GitHubAuthError:
-        github_token = await _refresh_thread_github_token_after_401(thread_id, email)
+        github_token = await _refresh_thread_github_token_after_401(thread_id, config)
         if not github_token:
             logger.warning("Re-auth failed for thread %s after 401; skipping", thread_id)
             return
@@ -3129,6 +3148,27 @@ async def process_github_issue(payload: dict[str, Any], event_type: str) -> None
         repo_config.get("name"),
     )
 
+    configurable: dict[str, Any] = {
+        "source": "github",
+        "github_login": github_login,
+        "github_user_id": github_user_id,
+        "repo": repo_config,
+        "github_issue": {
+            "id": issue_id,
+            "number": issue_number,
+            "title": title,
+            "url": issue_url,
+        },
+    }
+
+    run_metadata = {
+        **_AGENT_VERSION_METADATA,
+        "langfuse_session_id": thread_id,
+        "langfuse_user_id": configurable.get("github_login", "unknown"),
+    }
+
+    config={"configurable": configurable, "metadata": run_metadata}
+
     if not issue_id or not issue_number:
         logger.warning("Missing GitHub issue id/number, skipping")
         return
@@ -3140,7 +3180,7 @@ async def process_github_issue(payload: dict[str, Any], event_type: str) -> None
 
     thread_id = generate_thread_id_from_github_issue(issue_id)
     existing_thread = await _thread_exists(thread_id)
-    github_token = await _get_or_resolve_thread_github_token(thread_id, email)
+    github_token = await _get_or_resolve_thread_github_token(thread_id, config)
     app_token = await get_github_app_installation_token()
     reaction_token = github_token or app_token
     comment = payload.get("comment", {})
@@ -3157,7 +3197,7 @@ async def process_github_issue(payload: dict[str, Any], event_type: str) -> None
                     token=reaction_token,
                 )
             except GitHubAuthError:
-                github_token = await _refresh_thread_github_token_after_401(thread_id, email)
+                github_token = await _refresh_thread_github_token_after_401(thread_id, config)
                 reaction_token = github_token or app_token
                 reacted = False
                 if reaction_token:
@@ -3191,7 +3231,7 @@ async def process_github_issue(payload: dict[str, Any], event_type: str) -> None
                 repo_config, issue_number, token=github_token or app_token
             )
         except GitHubAuthError:
-            github_token = await _refresh_thread_github_token_after_401(thread_id, email)
+            github_token = await _refresh_thread_github_token_after_401(thread_id, config)
             comments = await fetch_issue_comments(
                 repo_config, issue_number, token=github_token or app_token
             )
@@ -3216,18 +3256,6 @@ async def process_github_issue(payload: dict[str, Any], event_type: str) -> None
             github_login=github_login,
             issue_author=issue_author,
         )
-    configurable: dict[str, Any] = {
-        "source": "github",
-        "github_login": github_login,
-        "github_user_id": github_user_id,
-        "repo": repo_config,
-        "github_issue": {
-            "id": issue_id,
-            "number": issue_number,
-            "title": title,
-            "url": issue_url,
-        },
-    }
 
     thread_active = await is_thread_active(thread_id)
     if thread_active:
@@ -3237,16 +3265,12 @@ async def process_github_issue(payload: dict[str, Any], event_type: str) -> None
 
     logger.info("Creating LangGraph run for thread %s from GitHub issue", thread_id)
     langgraph_client = get_client(url=LANGGRAPH_URL)
-    run_metadata = {
-        **_AGENT_VERSION_METADATA,
-        "langfuse_session_id": thread_id,
-        "langfuse_user_id": configurable.get("github_login", "unknown"),
-    }
+
     await langgraph_client.runs.create(
         thread_id,
         "agent",
         input={"messages": [{"role": "user", "content": prompt}]},
-        config={"configurable": configurable, "metadata": run_metadata},
+        config=config,
         if_not_exists="create",
     )
     logger.info("LangGraph run created for thread %s from GitHub issue", thread_id)

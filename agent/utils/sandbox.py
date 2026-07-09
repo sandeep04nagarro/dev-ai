@@ -2,14 +2,14 @@ from deepagents.backends.protocol import SandboxBackendProtocol
 
 from agent.integrations.daytona import create_daytona_sandbox
 from agent.integrations.docker import create_docker_sandbox
-from agent.integrations.langsmith import create_langsmith_sandbox
+# from agent.integrations.langsmith import create_langsmith_sandbox
 from agent.integrations.local import create_local_sandbox
 from agent.integrations.modal import create_modal_sandbox
 from agent.integrations.runloop import create_runloop_sandbox
 from agent.utils import config as cfg
 
 SANDBOX_FACTORIES = {
-    "langsmith": create_langsmith_sandbox,
+    # "langsmith": create_langsmith_sandbox,
     "daytona": create_daytona_sandbox,
     "docker": create_docker_sandbox,
     "modal": create_modal_sandbox,
@@ -38,15 +38,14 @@ def create_sandbox(sandbox_id: str | None = None) -> SandboxBackendProtocol:
     return factory(sandbox_id)
 
 
-def validate_sandbox_startup_config() -> None:
-    """Validate the configured sandbox provider's env vars at server startup.
+# def validate_sandbox_startup_config() -> None:
+#     """Validate the configured sandbox provider's env vars at server startup.
 
-    Raises ValueError if the active provider's configuration is invalid.
-    Called from the FastAPI lifespan hook so errors surface at boot rather
-    than on the first sandbox creation.
-    """
-    sandbox_type = cfg.SANDBOX_TYPE
-    if sandbox_type == "langsmith":
-        from agent.integrations.langsmith import LangSmithProvider
-
-        LangSmithProvider.validate_startup_config()
+#     Raises ValueError if the active provider's configuration is invalid.
+#     Called from the FastAPI lifespan hook so errors surface at boot rather
+#     than on the first sandbox creation.
+#     """
+#     sandbox_type = cfg.SANDBOX_TYPE
+#     if sandbox_type == "langsmith":
+#         from agent.integrations.langsmith import LangSmithProvider
+#         LangSmithProvider.validate_startup_config()

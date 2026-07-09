@@ -41,7 +41,7 @@ from ..utils.github_token import (
     get_github_token,
     invalidate_cached_github_token,
 )
-from ..utils.langsmith import get_langsmith_trace_url
+# from ..utils.langsmith import get_langsmith_trace_url
 from ..utils.slack import post_slack_thread_reply
 
 
@@ -146,7 +146,8 @@ async def _resolve_review_trace_url(thread_id: str, config_override: object) -> 
         return None
     if not thread_id:
         return None
-    return get_langsmith_trace_url(thread_id)
+    # return get_langsmith_trace_url(thread_id)
+    return None
 
 
 def _is_reviewer_eval_mode(configurable: dict[str, Any]) -> bool:

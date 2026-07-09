@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 import httpx
 from langgraph_sdk.client import LangGraphClient
 
-from agent.utils.langsmith import get_langsmith_trace_url
+# from agent.utils.langsmith import get_langsmith_trace_url
 
 logger = logging.getLogger(__name__)
 
@@ -722,17 +722,17 @@ def _format_trace_reply(trace_url: str | None) -> str:
     return f"{head}_Tip: {tip}_"
 
 
-async def post_slack_trace_reply(channel_id: str, thread_ts: str, thread_id: str) -> str | None:
-    """Post a trace URL reply in a Slack thread and return its Slack timestamp."""
-    trace_url = get_langsmith_trace_url(thread_id)
-    message_ts, _ = await post_slack_thread_reply_with_ts(
-        channel_id,
-        thread_ts,
-        _format_trace_reply(trace_url),
-        unfurl_links=False,
-        unfurl_media=False,
-    )
-    return message_ts
+# async def post_slack_trace_reply(channel_id: str, thread_ts: str, thread_id: str) -> str | None:
+#     """Post a trace URL reply in a Slack thread and return its Slack timestamp."""
+#     trace_url = get_langsmith_trace_url(thread_id)
+#     message_ts, _ = await post_slack_thread_reply_with_ts(
+#         channel_id,
+#         thread_ts,
+#         _format_trace_reply(trace_url),
+#         unfurl_links=False,
+#         unfurl_media=False,
+#     )
+#     return message_ts
 
 
 _SLACK_RUN_MAP_NAMESPACE = "slack_run_map"

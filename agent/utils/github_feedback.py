@@ -11,7 +11,7 @@ from langgraph_sdk.client import LangGraphClient
 
 from ..reviewer_findings import list_findings
 from agent.utils import config as cfg
-from .langsmith import create_langsmith_feedback, delete_langsmith_feedback
+# from .langsmith import create_langsmith_feedback, delete_langsmith_feedback
 
 logger = logging.getLogger(__name__)
 
@@ -208,19 +208,19 @@ async def process_github_reaction(
         "user_login": user_login,
     }
     score = _score_reactions(active_reactions)
-    if score is None:
-        success = await asyncio.to_thread(delete_langsmith_feedback, run_id, key)
-    else:
-        success = await asyncio.to_thread(
-            create_langsmith_feedback,
-            run_id,
-            key,
-            score=score,
-            comment=f"GitHub review reaction feedback from {user_login}",
-            source_info={**source_info, "reactions": sorted(active_reactions)},
-        )
-    if success:
-        await _mark_event_processed(langgraph_client, repo_key, delivery_id)
+    # if score is None:
+    #     success = await asyncio.to_thread(delete_langsmith_feedback, run_id, key)
+    # else:
+    #     success = await asyncio.to_thread(
+    #         create_langsmith_feedback,
+    #         run_id,
+    #         key,
+    #         score=score,
+    #         comment=f"GitHub review reaction feedback from {user_login}",
+    #         source_info={**source_info, "reactions": sorted(active_reactions)},
+    #     )
+    # if success:
+    #     await _mark_event_processed(langgraph_client, repo_key, delivery_id)
 
 
 async def process_github_reaction_added(payload: dict[str, Any], delivery_id: str = "") -> None:
