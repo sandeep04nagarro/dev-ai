@@ -9,9 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
-from typing import Any
 import time
+from typing import Any
 
 from docker.errors import APIError, NotFound
 from langchain.agents.middleware import AgentState, after_agent
@@ -19,11 +18,12 @@ from langgraph.config import get_config
 from langgraph.runtime import Runtime
 
 from agent.integrations.docker import DockerSandbox
+from agent.utils import config as cfg
 from agent.utils.sandbox_state import SANDBOX_BACKENDS, unwrap_sandbox_backend
 
 logger = logging.getLogger(__name__)
 
-if os.getenv("DEBUG_MODE", "").lower() in ("on", "1", "true"):
+if cfg.DEBUG_MODE:
     logger.setLevel(logging.DEBUG)
 
 
@@ -55,13 +55,13 @@ async def docker_cleanup_middleware(
 
     container_id = current.id
     try:
-        logger.info( # temp logging
+        logger.debug(
             "STOP begin %s at %f",
             container_id,
             time.time(),
         )
         await asyncio.to_thread(current._container.stop, timeout=5)  # noqa: SLF001
-        logger.info( # temp logging
+        logger.debug(
             "STOP complete %s at %f",
             container_id,
             time.time(),

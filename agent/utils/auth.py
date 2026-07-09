@@ -14,6 +14,7 @@ from langgraph.graph.state import RunnableConfig
 from langgraph_sdk import get_client
 
 from ..encryption import encrypt_token
+from agent.utils import config as cfg
 from .github_app import get_github_app_installation_token_with_expiry
 from .github_token import get_github_token_from_thread
 from .github_user_email_map import GITHUB_USER_EMAIL_MAP
@@ -25,8 +26,8 @@ logger = logging.getLogger(__name__)
 client = get_client()
 
 LANGSMITH_API_KEY = os.environ.get("LANGSMITH_API_KEY_PROD", "")
-LANGSMITH_API_URL = os.environ.get("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
-LANGSMITH_HOST_API_URL = os.environ.get("LANGSMITH_HOST_API_URL", "https://api.host.langchain.com")
+LANGSMITH_API_URL = cfg.LANGSMITH_ENDPOINT
+LANGSMITH_HOST_API_URL = cfg.LANGSMITH_HOST_API_URL
 GITHUB_OAUTH_PROVIDER_ID = os.environ.get("GITHUB_OAUTH_PROVIDER_ID", "")
 X_SERVICE_AUTH_JWT_SECRET = os.environ.get("X_SERVICE_AUTH_JWT_SECRET", "")
 USER_ID_API_KEY_MAP = os.environ.get("USER_ID_API_KEY_MAP", "")

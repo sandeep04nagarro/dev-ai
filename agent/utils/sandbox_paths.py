@@ -170,7 +170,10 @@ def _is_writable_directory(
 ) -> bool:
     # 1. Try POSIX-style 'test' (bash/zsh/sh/WSL/Git Bash)
     safe_directory = shlex.quote(directory)
-    if sandbox_backend.execute(f"test -d {safe_directory} && test -w {safe_directory}").exit_code == 0:
+    if (
+        sandbox_backend.execute(f"test -d {safe_directory} && test -w {safe_directory}").exit_code
+        == 0
+    ):
         return True
 
     sentinel_name = f".open_swe_write_test_{os.getpid()}"
@@ -185,8 +188,8 @@ def _is_writable_directory(
     # cmd.exe does NOT understand shlex.quote's single quotes and hates forward slashes in 'del'.
     # We normalize to backslashes and use double quotes.
     win_sentinel = sentinel_path.replace("/", "\\")
-    
-    # We use double quotes for cmd.exe. 
+
+    # We use double quotes for cmd.exe.
     # Note: del "C:\path\to\file" works, while del "C:/path/to/file" often fails with "Invalid switch".
     win_cmd = f'echo 1 > "{win_sentinel}" && del "{win_sentinel}"'
     if sandbox_backend.execute(win_cmd).exit_code == 0:

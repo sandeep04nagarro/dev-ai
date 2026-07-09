@@ -4,7 +4,6 @@
 # Suppress deprecation warnings from langchain_core (e.g., Pydantic V1 on Python 3.14+)
 # ruff: noqa: E402
 import logging
-import os
 import warnings
 from typing import Any
 
@@ -33,6 +32,7 @@ from agent.middleware import (  # noqa: E402
     ModelFallbackMiddleware,
     build_server_middleware_list,
 )
+from agent.utils import config as cfg
 
 from .dashboard.agent_overrides import (
     load_profile,
@@ -92,7 +92,7 @@ from agent.utils.sandbox_state import (
 
 async def _start_langsmith_sandbox_if_needed(sandbox_backend: SandboxBackendProtocol) -> None:
     """Start a LangSmith sandbox before operations that require it to be running."""
-    if os.getenv("SANDBOX_TYPE", "langsmith") != "langsmith":
+    if cfg.SANDBOX_TYPE != "langsmith":
         return
     current_backend = unwrap_sandbox_backend(sandbox_backend)
     if not isinstance(current_backend, LangSmithSandbox):
@@ -122,7 +122,7 @@ async def _create_sandbox_with_proxy() -> SandboxBackendProtocol:
     """
     sandbox_backend = await asyncio.to_thread(create_sandbox)
 
-    sandbox_type = os.getenv("SANDBOX_TYPE", "langsmith")
+    sandbox_type = cfg.SANDBOX_TYPE
     if sandbox_type == "langsmith":
         installation_token = await get_github_app_installation_token()
         if not installation_token:
@@ -139,7 +139,7 @@ async def _refresh_github_proxy(
     sandbox_backend: SandboxBackendProtocol,
 ) -> None:
     """Refresh GitHub proxy credentials for reused LangSmith sandboxes."""
-    if os.getenv("SANDBOX_TYPE", "langsmith") != "langsmith":
+    if cfg.SANDBOX_TYPE != "langsmith":
         return
 
     installation_token = await get_github_app_installation_token()
@@ -389,15 +389,14 @@ async def get_agent(config: RunnableConfig) -> Pregel:
         return _get_cached_sandbox_backend(_thread_id)
 
     model_id, profile_effort = await get_team_default_model("agent")
-    env_model_id = os.environ.get("LLM_MODEL_ID")
-    if env_model_id:
-        model_id = env_model_id
-        logger.info("Using LLM_MODEL_ID environment override: %s", model_id)
+    if cfg.LLM_MODEL_ID:
+        model_id = cfg.LLM_MODEL_ID
+        logger.info("Using LLM_MODEL_ID config override: %s", model_id)
 
     logger.info("Using team default agent model: model=%s effort=%s", model_id, profile_effort)
     subagent_model_id, subagent_effort = await get_team_default_subagent_model("agent")
-    if env_model_id:
-        subagent_model_id = env_model_id
+    if cfg.LLM_MODEL_ID:
+        subagent_model_id = cfg.LLM_MODEL_ID
         logger.info("Using LLM_MODEL_ID environment override for subagent: %s", subagent_model_id)
 
     logger.info(
@@ -470,7 +469,7 @@ async def get_agent(config: RunnableConfig) -> Pregel:
         max_tokens=DEFAULT_LLM_MAX_TOKENS,
     )
 
-    fallback_model_id = os.environ.get("LLM_FALLBACK_MODEL_ID") or fallback_model_id_for(model_id)
+    fallback_model_id = cfg.LLM_FALLBACK_MODEL_ID or fallback_model_id_for(model_id)
     fallback_middleware: list[Any] = []
     if fallback_model_id and fallback_model_id != model_id:
         fallback_kwargs: ModelKwargs = {"max_tokens": DEFAULT_LLM_MAX_TOKENS}

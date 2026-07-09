@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from typing import Any
 
 from langchain.agents.middleware.types import AgentMiddleware, AgentState
 from langchain_core.messages import ToolMessage
@@ -79,7 +78,11 @@ async def _sync_todos_to_jira(request: ToolCallRequest) -> None:
 
         client = langgraph_client()
         thread = await client.threads.get(thread_id)
-        metadata = thread.get("metadata", {}) if isinstance(thread, dict) else getattr(thread, "metadata", {})
+        metadata = (
+            thread.get("metadata", {})
+            if isinstance(thread, dict)
+            else getattr(thread, "metadata", {})
+        )
 
         jira_issue_key = metadata.get("jira_issue_key")
         if not jira_issue_key:
@@ -111,7 +114,9 @@ async def _sync_todos_to_jira(request: ToolCallRequest) -> None:
         if new_comment_id:
             metadata["jira_plan_comment_id"] = new_comment_id
             await client.threads.update(thread_id, metadata=metadata)
-            logger.info("Posted new Jira plan comment %s for issue %s", new_comment_id, jira_issue_key)
+            logger.info(
+                "Posted new Jira plan comment %s for issue %s", new_comment_id, jira_issue_key
+            )
         else:
             logger.warning("Failed to post new Jira plan comment for issue %s", jira_issue_key)
 
@@ -125,7 +130,7 @@ def _sync_todos_to_jira_sync(request: ToolCallRequest) -> None:
     except RuntimeError:
         asyncio.run(_sync_todos_to_jira(request))
         return
-    
+
     # If we have an event loop, we shouldn't block, but this is a sync wrapper
     # Fire and forget is risky in sync contexts, but we can try to schedule it
     loop = asyncio.get_running_loop()

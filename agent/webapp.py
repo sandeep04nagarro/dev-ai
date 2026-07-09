@@ -18,6 +18,15 @@ from langchain_core.messages.content import create_text_block
 from langgraph_sdk import get_client
 from langgraph_sdk.client import LangGraphClient
 
+from agent.utils.complexity_classifier import (
+    decide_tier,
+    parse_recon_output,
+    run_layer_0,
+    ticket_hash,
+)
+from agent.utils.repo import extract_repo_from_text
+from agent.utils.repo_selector import select_repos_for_ticket
+
 from .dashboard import router as dashboard_router
 from .dashboard.agent_overrides import (
     get_profile_default_repo,
@@ -40,6 +49,7 @@ from .reviewer_findings import (
 )
 from .reviewer_publish import fetch_pr_review_threads
 from .reviewer_reconcile import reconcile_findings_with_review_threads
+from agent.utils import config as cfg
 from .utils.auth import (
     is_bot_token_only_mode,
     persist_encrypted_github_token,
@@ -68,14 +78,14 @@ from .utils.github_comments import (
 from .utils.github_org_membership import INTERNAL_BOT_LOGINS, is_user_active_org_member
 from .utils.github_token import get_github_token_from_thread, invalidate_cached_github_token
 from .utils.github_user_email_map import GITHUB_USER_EMAIL_MAP
-from .utils.jira import extract_adf_text, fetch_jira_issue_details, post_jira_comment, post_jira_trace_comment
-from .utils.jira_project_repo_map import JIRA_PROJECT_TO_REPO
+from agent.utils.jira import (
+    extract_adf_text,
+    fetch_jira_issue_details,
+    post_jira_trace_comment,
+)
 from .utils.linear import post_linear_trace_comment
 from .utils.linear_team_repo_map import LINEAR_TEAM_TO_REPO
 from .utils.multimodal import dedupe_urls, extract_image_urls, fetch_image_block
-from agent.utils.repo_selector import select_repos_for_ticket
-from agent.utils.repo import extract_repo_from_text
-from agent.utils.complexity_classifier import run_layer_0, ticket_hash, parse_recon_output, decide_tier
 from .utils.sandbox import validate_sandbox_startup_config
 from .utils.slack import (
     GitHubPrRef,
@@ -102,7 +112,7 @@ from .utils.thread_ops import is_thread_active, queue_message_for_thread
 
 logger = logging.getLogger(__name__)
 
-if os.getenv("DEBUG_MODE", "").lower() in ("on", "1", "true"):
+if cfg.DEBUG_MODE:
     logger.setLevel(logging.DEBUG)
 
 
@@ -115,7 +125,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(lifespan=lifespan)
 
 DASHBOARD_ALLOWED_ORIGINS: list[str] = [
-    o.strip() for o in os.environ.get("DASHBOARD_ALLOWED_ORIGINS", "").split(",") if o.strip()
+    o.strip() for o in cfg.DASHBOARD_ALLOWED_ORIGINS.split(",") if o.strip()
 ]
 if DASHBOARD_ALLOWED_ORIGINS:
     app.add_middleware(
@@ -130,39 +140,29 @@ app.include_router(dashboard_router)
 
 LINEAR_WEBHOOK_SECRET = os.environ.get("LINEAR_WEBHOOK_SECRET", "")
 JIRA_WEBHOOK_SECRET = os.environ.get("JIRA_WEBHOOK_SECRET", "")
-JIRA_BOT_NAME = os.environ.get("JIRA_BOT_NAME", "Open SWE Agent")
+JIRA_BOT_NAME = cfg.JIRA_BOT_NAME
 GITHUB_WEBHOOK_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "")
 SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET", "")
-SLACK_BOT_USER_ID = os.environ.get("SLACK_BOT_USER_ID", "")
-SLACK_BOT_USERNAME = os.environ.get("SLACK_BOT_USERNAME", "")
-DEFAULT_REPO_OWNER = os.environ.get("DEFAULT_REPO_OWNER", "langchain-ai")
-DEFAULT_REPO_NAME = os.environ.get("DEFAULT_REPO_NAME", "langchainplus")
-SLACK_REPO_OWNER = os.environ.get("SLACK_REPO_OWNER", "") or DEFAULT_REPO_OWNER
-SLACK_REPO_NAME = os.environ.get("SLACK_REPO_NAME", "") or DEFAULT_REPO_NAME
+SLACK_BOT_USER_ID = cfg.SLACK_BOT_USER_ID
+SLACK_BOT_USERNAME = cfg.SLACK_BOT_USERNAME
+DEFAULT_REPO_OWNER = cfg.DEFAULT_REPO_OWNER
+DEFAULT_REPO_NAME = cfg.DEFAULT_REPO_NAME
+SLACK_REPO_OWNER = cfg.SLACK_REPO_OWNER or cfg.DEFAULT_REPO_OWNER
+SLACK_REPO_NAME = cfg.SLACK_REPO_NAME or cfg.DEFAULT_REPO_NAME
 
-LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL") or os.environ.get(
-    "LANGGRAPH_URL_PROD", "http://localhost:2024"
-)
+LANGGRAPH_URL = cfg.LANGGRAPH_URL
 
 _AGENT_VERSION_METADATA: dict[str, str] = (
-    {"LANGSMITH_AGENT_VERSION": os.environ["LANGCHAIN_REVISION_ID"]}
-    if os.environ.get("LANGCHAIN_REVISION_ID")
-    else {}
+    {"LANGSMITH_AGENT_VERSION": cfg.LANGCHAIN_REVISION_ID} if cfg.LANGCHAIN_REVISION_ID else {}
 )
 
 ALLOWED_GITHUB_ORGS: frozenset[str] = frozenset(
-    org.strip().lower()
-    for org in os.environ.get("ALLOWED_GITHUB_ORGS", "").split(",")
-    if org.strip()
+    org.strip().lower() for org in cfg.ALLOWED_GITHUB_ORGS.split(",") if org.strip()
 )
-# Org whose members are allowed to tag @open-swe on public repos. When empty,
-# the public-repo gate is disabled (back-compat).
-PUBLIC_REPO_ORG_GATE: str = os.environ.get("PUBLIC_REPO_ORG_GATE", "").strip()
+PUBLIC_REPO_ORG_GATE: str = cfg.PUBLIC_REPO_ORG_GATE.strip()
 
 ALLOWED_GITHUB_REPOS: frozenset[str] = frozenset(
-    repo.strip().lower()
-    for repo in os.environ.get("ALLOWED_GITHUB_REPOS", "").split(",")
-    if repo.strip()
+    repo.strip().lower() for repo in cfg.ALLOWED_GITHUB_REPOS.split(",") if repo.strip()
 )
 
 LINEAR_API_KEY = os.environ.get("LINEAR_API_KEY", "")
@@ -1336,7 +1336,7 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
     webhook_event = payload.get("webhookEvent")
     issue = payload.get("issue", {})
     issue_key = issue.get("key", "")
-    
+
     comment_body = ""
     author_name = "User"
     author_email = ""
@@ -1366,7 +1366,7 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
         if "@openswe" not in comment_body.lower():
             logger.debug("Ignoring Jira webhook: comment doesn't mention @openswe")
             return {"status": "ignored", "reason": "Comment doesn't mention @openswe"}
-        
+
         author_name = author.get("displayName", "User")
         author_email = author.get("emailAddress", "")
 
@@ -1376,14 +1376,14 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
     elif webhook_event == "jira:issue_updated":
         changelog_items = payload.get("changelog", {}).get("items", [])
         is_newly_assigned_to_bot = False
-        
+
         for item in changelog_items:
             if item.get("field") == "assignee":
                 new_assignee = item.get("toString")
                 if new_assignee == JIRA_BOT_NAME:
                     is_newly_assigned_to_bot = True
                     break
-        
+
         if not is_newly_assigned_to_bot:
             logger.debug("Ignoring Jira webhook: update was not an assignment to %s", JIRA_BOT_NAME)
             return {"status": "ignored", "reason": "Update was not an assignment to bot"}
@@ -1402,16 +1402,19 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
     elif webhook_event == "jira:issue_created":
         # Look directly at the initial fields, not the changelog
         assignee_data = issue.get("fields", {}).get("assignee")
-        
+
         # If there is no assignee, ignore it
         if not assignee_data:
-             logger.debug("Ignoring Jira webhook: created without assignee")
-             return {"status": "ignored", "reason": "Created without assignee"}
-             
+            logger.debug("Ignoring Jira webhook: created without assignee")
+            return {"status": "ignored", "reason": "Created without assignee"}
+
         # Check if the initial assignee is the bot
         if assignee_data.get("displayName") != JIRA_BOT_NAME:
-             logger.debug("Ignoring Jira webhook: created, but assigned to %s", assignee_data.get("displayName"))
-             return {"status": "ignored", "reason": "Created, but assigned to someone else"}
+            logger.debug(
+                "Ignoring Jira webhook: created, but assigned to %s",
+                assignee_data.get("displayName"),
+            )
+            return {"status": "ignored", "reason": "Created, but assigned to someone else"}
 
         # Synthesize the prompt
         comment_body = (
@@ -1430,16 +1433,16 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
         return {"status": "ignored", "reason": "No issue data"}
 
     project_key = issue_key.split("-")[0] if "-" in issue_key else ""
-    
+
     # Resolve repos from comment body (if any) first
     selected_repos = extract_repo_from_text(comment_body, default_owner=DEFAULT_REPO_OWNER)
-    
+
     if not selected_repos:
         fields = issue.get("fields", {})
         summary = fields.get("summary") or "No title"
         description = fields.get("description")
         description = extract_adf_text(description) if description else "No description"
-        
+
         selected_repos = await select_repos_for_ticket(
             project_key=project_key,
             issue_key=issue_key,
@@ -1458,8 +1461,15 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
         logger.warning("Jira trigger for forbidden repos. None of the selected repos are allowed.")
         return {"status": "ignored", "reason": "Repository not in allowlist"}
 
-    logger.info("Accepted Jira webhook for issue %s (%s), scheduling background task for %d repos", issue_key, webhook_event, len(allowed_repos))
-    background_tasks.add_task(process_jira_issue, issue, allowed_repos, comment_body, author_name, author_email)
+    logger.info(
+        "Accepted Jira webhook for issue %s (%s), scheduling background task for %d repos",
+        issue_key,
+        webhook_event,
+        len(allowed_repos),
+    )
+    background_tasks.add_task(
+        process_jira_issue, issue, allowed_repos, comment_body, author_name, author_email
+    )
 
     return {
         "status": "accepted",
@@ -1540,8 +1550,7 @@ def build_github_issue_prompt(
     comments_text = _build_github_issue_comments_text(comments)
     sanitized_title = sanitize_github_comment_body(title)
     formatted_body = format_github_comment_body_for_prompt(issue_author or github_login, body)
-    # Determine GitHub auth prefix based on sandbox type
-    sandbox_type = os.getenv("SANDBOX_TYPE", "langsmith")
+    sandbox_type = cfg.SANDBOX_TYPE
     gh_auth_prefix = "GH_TOKEN=dummy " if sandbox_type == "langsmith" else ""
 
     return (
@@ -1590,7 +1599,7 @@ def build_jira_issue_prompt(
 ) -> str:
     """Build the user prompt for a Jira issue-triggered run."""
     triggered_by_line = f"## Triggered by: {user_name}\n\n" if user_name else ""
-    
+
     comments_text = ""
     if comments:
         comments_text = "\n\n## Comments:\n"
@@ -1598,7 +1607,7 @@ def build_jira_issue_prompt(
             author = (comment.get("author") or {}).get("displayName", "User")
             body = comment.get("body")
             extracted_body = extract_adf_text(body)
-            
+
             if not extracted_body:
                 continue
             comments_text += f"\n**{author}:** {extracted_body}\n"
@@ -1613,15 +1622,17 @@ def build_jira_issue_prompt(
         jira_email = os.environ.get("JIRA_EMAIL", "")
         jira_token = os.environ.get("JIRA_API_TOKEN", "")
         for att in attachments:
-            url = att.get('content')
-            filename = att.get('filename')
+            url = att.get("content")
+            filename = att.get("filename")
             if url and filename:
-                attachment_section += f"curl -sSL -u \\\"{jira_email}:{jira_token}\\\" -o \\\"{filename}\\\" \\\"{url}\\\"\n"
+                attachment_section += f'curl -sSL -u \\"{jira_email}:{jira_token}\\" -o \\"{filename}\\" \\"{url}\\"\n'
         attachment_section += "```\n\n"
 
     repos_section = "## Repositories\\nThis issue involves the following repositories:\\n"
     for r in selected_repos:
-        repos_section += f"- **{r['name']}** (Type: {r.get('type', 'unknown')}): {r['owner']}/{r['name']}\n"
+        repos_section += (
+            f"- **{r['name']}** (Type: {r.get('type', 'unknown')}): {r['owner']}/{r['name']}\n"
+        )
     repos_section += "\n"
 
     prompt = (
@@ -1641,6 +1652,7 @@ def build_jira_issue_prompt(
 
     if recon_findings:
         from agent.prompt import RECON_FINDINGS_SECTION
+
         prompt += RECON_FINDINGS_SECTION.format(
             recon_findings_json=json.dumps(recon_findings, indent=2)
         )
@@ -1689,12 +1701,16 @@ def build_recon_jira_issue_prompt(
             url = att.get("content")
             filename = att.get("filename")
             if url and filename:
-                attachment_section += f"curl -sSL -u \"{jira_email}:{jira_token}\" -o \"{filename}\" \"{url}\"\n"
+                attachment_section += (
+                    f'curl -sSL -u "{jira_email}:{jira_token}" -o "{filename}" "{url}"\n'
+                )
         attachment_section += "```\n\n"
 
     repos_section = ""
     for r in selected_repos:
-        repos_section += f"- **{r['name']}** (Type: {r.get('type', 'unknown')}): {r['owner']}/{r['name']}\n"
+        repos_section += (
+            f"- **{r['name']}** (Type: {r.get('type', 'unknown')}): {r['owner']}/{r['name']}\n"
+        )
 
     return RECON_SCOPE_PROMPT.format(
         repos_section=repos_section,
@@ -1719,7 +1735,7 @@ async def process_jira_issue(
     """Process a Jira issue by creating a new LangGraph thread and run."""
     issue_id = issue_data.get("id", "")
     issue_key = issue_data.get("key", "")
-    
+
     repo_names = [r["name"] for r in selected_repos]
     logger.info(
         "Processing Jira issue %s (%s) for repos %s",
@@ -1739,12 +1755,12 @@ async def process_jira_issue(
     webhook_fields = issue_data.get("fields", {})
 
     title = fields.get("summary") or webhook_fields.get("summary") or "No title"
-    
+
     description = fields.get("description") or webhook_fields.get("description")
     description = extract_adf_text(description) if description else "No description"
 
     comments = full_issue.get("comments", [])
-    
+
     attachments = fields.get("attachment") or webhook_fields.get("attachment") or []
 
     # Use the first repo as the primary 'repo' config (defined early for recon)
@@ -1752,10 +1768,7 @@ async def process_jira_issue(
 
     # Ensure the triggering comment is in the list if it's a new comment event
     if triggering_comment and not any(c.get("body") == triggering_comment for c in comments):
-        comments.append({
-            "author": {"displayName": author_name},
-            "body": triggering_comment
-        })
+        comments.append({"author": {"displayName": author_name}, "body": triggering_comment})
 
     # Try to find user info
     creator = fields.get("creator") or webhook_fields.get("creator") or {}
@@ -1773,12 +1786,12 @@ async def process_jira_issue(
 
     # Layer 0: Static tier check
     tier = run_layer_0(fields)
-    logger.debug("Layer 0 tier=%s, RECON_ENABLED=%s, issue_key=%s",
-                 tier, os.environ.get("RECON_ENABLED", "false"), issue_key)
+    logger.debug(
+        "Layer 0 tier=%s, RECON_ENABLED=%s, issue_key=%s", tier, cfg.RECON_ENABLED, issue_key
+    )
 
-    # Recon orchestration: only if ambiguous AND RECON_ENABLED
     recon_findings = None
-    if tier is None and os.environ.get("RECON_ENABLED", "false").lower() == "true":
+    if tier is None and cfg.RECON_ENABLED:
         logger.debug("Starting recon flow for %s — tier=ambiguous", issue_key)
         # Check for existing recon findings via thread metadata
         existing_findings, existing_ticket_hash = None, None
@@ -1791,9 +1804,9 @@ async def process_jira_issue(
                 logger.debug("existing findings : %s", existing_findings)
         except Exception as e:
             logger.debug("could not find existing recon findings %s", e)
-        
+
         current_ticket_hash = ticket_hash(description, comments)
-        
+
         if existing_findings and existing_ticket_hash == current_ticket_hash:
             # Hash matches - reuse existing findings
             recon_findings = existing_findings
@@ -1815,7 +1828,7 @@ If these findings still apply to this ticket, confirm reuse and exit.
 {json.dumps(existing_findings, indent=2)}
 ```"""
             logger.debug("prior section for recon prompt : %s", prior_section)
-            
+
             recon_prompt = build_recon_jira_issue_prompt(
                 selected_repos=selected_repos,
                 issue_key=issue_key,
@@ -1827,8 +1840,8 @@ If these findings still apply to this ticket, confirm reuse and exit.
                 prior_findings_section=prior_section,
                 user_name=user_name,
             )
-            
-            recon_step_limit = int(os.environ.get("RECON_STEP_LIMIT", "20"))
+
+            recon_step_limit = cfg.RECON_STEP_LIMIT
             recon_configurable = {
                 "repo": primary_repo,
                 "selected_repos": selected_repos,
@@ -1841,10 +1854,12 @@ If these findings still apply to this ticket, confirm reuse and exit.
                 "source": "jira",
                 "thread_id": thread_id,
             }
-            
+
             logger.debug(
                 "Invoking recon agent — thread_id=%s, step_limit=%d, model=%s",
-                thread_id, recon_step_limit, os.environ.get("RECON_MODEL_ID", "openai:gpt-4o-mini"),
+                thread_id,
+                recon_step_limit,
+                cfg.RECON_MODEL_ID,
             )
             recon_state = await langgraph_client.runs.wait(
                 thread_id,
@@ -1855,7 +1870,7 @@ If these findings still apply to this ticket, confirm reuse and exit.
             )
             recon_findings = parse_recon_output(recon_state)
             logger.debug("Recon agent result — findings=%s", recon_findings)
-            
+
             # Store findings in thread metadata for future reuse
             if recon_findings:
                 try:
@@ -1866,10 +1881,14 @@ If these findings still apply to this ticket, confirm reuse and exit.
                             "recon_ticket_hash": current_ticket_hash,
                         },
                     )
-                    logger.debug("Successfully updated thread metadata to store recon_findings and recon_ticket_hash")
+                    logger.debug(
+                        "Successfully updated thread metadata to store recon_findings and recon_ticket_hash"
+                    )
                 except Exception:
-                    logger.warning("Could not update thread metadata to store recon_findings and recon_ticket_hash")
-        
+                    logger.warning(
+                        "Could not update thread metadata to store recon_findings and recon_ticket_hash"
+                    )
+
         tier = decide_tier(recon_findings, fields)
         logger.debug("Tier after recon: %s", tier)
 
@@ -1885,7 +1904,7 @@ If these findings still apply to this ticket, confirm reuse and exit.
         recon_findings=recon_findings,
     )
 
-    # Use the first repo as the primary 'repo' config to satisfy single-repo downstream checks, 
+    # Use the first repo as the primary 'repo' config to satisfy single-repo downstream checks,
     # but store selected_repos as well
     primary_repo = selected_repos[0] if selected_repos else {}
 
@@ -1900,13 +1919,13 @@ If these findings still apply to this ticket, confirm reuse and exit.
         "user_email": user_email,
         "source": "jira",
     }
-    
+
     # Set model based on tier (only when explicitly light)
     if tier == "light":
-        configurable["agent_model_id"] = os.environ.get("RECON_MODEL_ID", "openai:gpt-4o-mini")
+        configurable["agent_model_id"] = cfg.RECON_MODEL_ID
         configurable["agent_effort"] = "low"
         logger.debug("Set light model: %s", configurable["agent_model_id"])
-    
+
     thread_active = await is_thread_active(thread_id)
     if thread_active:
         logger.info("Thread %s is active, queuing Jira message", thread_id)

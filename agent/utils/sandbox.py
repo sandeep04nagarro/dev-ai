@@ -1,5 +1,3 @@
-import os
-
 from deepagents.backends.protocol import SandboxBackendProtocol
 
 from agent.integrations.daytona import create_daytona_sandbox
@@ -8,6 +6,7 @@ from agent.integrations.langsmith import create_langsmith_sandbox
 from agent.integrations.local import create_local_sandbox
 from agent.integrations.modal import create_modal_sandbox
 from agent.integrations.runloop import create_runloop_sandbox
+from agent.utils import config as cfg
 
 SANDBOX_FACTORIES = {
     "langsmith": create_langsmith_sandbox,
@@ -31,7 +30,7 @@ def create_sandbox(sandbox_id: str | None = None) -> SandboxBackendProtocol:
     Returns:
         A sandbox backend implementing SandboxBackendProtocol.
     """
-    sandbox_type = os.getenv("SANDBOX_TYPE", "langsmith")
+    sandbox_type = cfg.SANDBOX_TYPE
     factory = SANDBOX_FACTORIES.get(sandbox_type)
     if not factory:
         supported = ", ".join(sorted(SANDBOX_FACTORIES))
@@ -46,7 +45,7 @@ def validate_sandbox_startup_config() -> None:
     Called from the FastAPI lifespan hook so errors surface at boot rather
     than on the first sandbox creation.
     """
-    sandbox_type = os.getenv("SANDBOX_TYPE", "langsmith")
+    sandbox_type = cfg.SANDBOX_TYPE
     if sandbox_type == "langsmith":
         from agent.integrations.langsmith import LangSmithProvider
 

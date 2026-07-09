@@ -10,14 +10,16 @@ from typing import Any
 from langsmith import Client as LangSmithClient
 from langsmith.utils import LangSmithNotFoundError
 
+from agent.utils import config as cfg
+
 logger = logging.getLogger(__name__)
 
 
 def _compose_langsmith_project_url() -> str:
-    """Build the LangSmith project URL base from environment variables."""
-    host_url = os.environ.get("LANGSMITH_URL_PROD", "https://smith.langchain.com")
-    tenant_id = os.environ.get("LANGSMITH_TENANT_ID_PROD")
-    project_id = os.environ.get("LANGSMITH_TRACING_PROJECT_ID_PROD")
+    """Build the LangSmith project URL base from config."""
+    host_url = cfg.LANGSMITH_URL_PROD
+    tenant_id = cfg.LANGSMITH_TENANT_ID_PROD
+    project_id = cfg.LANGSMITH_TRACING_PROJECT_ID_PROD
     if not tenant_id or not project_id:
         raise ValueError(
             "LANGSMITH_TENANT_ID_PROD and LANGSMITH_TRACING_PROJECT_ID_PROD must be set"
@@ -43,7 +45,7 @@ def _build_langsmith_feedback_clients() -> tuple[LangSmithClient, ...]:
     clients: list[LangSmithClient] = []
     seen: set[tuple[str, str]] = set()
 
-    api_endpoint = os.environ.get("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
+    api_endpoint = cfg.LANGSMITH_ENDPOINT
     client_configs = (
         (
             os.environ.get("LANGSMITH_API_KEY") or os.environ.get("LANGCHAIN_API_KEY"),
@@ -51,7 +53,7 @@ def _build_langsmith_feedback_clients() -> tuple[LangSmithClient, ...]:
         ),
         (
             os.environ.get("LANGSMITH_API_KEY_PROD"),
-            os.environ.get("LANGSMITH_ENDPOINT_PROD", api_endpoint),
+            cfg.LANGSMITH_ENDPOINT_PROD,
         ),
     )
 

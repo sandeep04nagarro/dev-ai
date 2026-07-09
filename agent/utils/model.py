@@ -1,7 +1,8 @@
 from typing import Literal, TypedDict, Unpack
-import os
 
 from langchain.chat_models import init_chat_model
+
+from agent.utils import config as cfg
 
 OPENAI_RESPONSES_WS_BASE_URL = "wss://api.openai.com/v1"
 
@@ -108,9 +109,9 @@ def make_model(model_id: str, **kwargs: Unpack[ModelKwargs]):
             model_provider = prefix
             actual_model = rest
 
-    base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    base_url = cfg.OPENAI_BASE_URL
     is_custom_openai = base_url != "https://api.openai.com/v1"
-    
+
     # If no recognized provider prefix was found, but we have a custom OpenAI base URL,
     # assume the openai provider (using the custom endpoint as a drop-in replacement).
     if not model_provider and is_custom_openai:
@@ -126,9 +127,7 @@ def make_model(model_id: str, **kwargs: Unpack[ModelKwargs]):
             # reasoning_content that LangChain can't round-trip. Explicitly
             # disable it to avoid 400 errors on subsequent requests.
             if "deepseek" in actual_model.lower():
-                model_kwargs.setdefault("extra_body", {}).update(
-                    {"thinking": {"type": "disabled"}}
-                )
+                model_kwargs.setdefault("extra_body", {}).update({"thinking": {"type": "disabled"}})
 
     return init_chat_model(model=actual_model, model_provider=model_provider, **model_kwargs)
 

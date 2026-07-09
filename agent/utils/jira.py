@@ -51,13 +51,13 @@ async def fetch_jira_issue_details(issue_id_or_key: str) -> dict[str, Any] | Non
             response = await client.get(url, headers=_headers())
             response.raise_for_status()
             issue_data = response.json()
-            
+
             # Fetch comments separately to ensure we get all of them
             comments_url = f"{url}/comment"
             comments_response = await client.get(comments_url, headers=_headers())
             if comments_response.status_code == 200:
                 issue_data["comments"] = comments_response.json().get("comments", [])
-            
+
             return issue_data
         except Exception:
             logger.exception("Failed to fetch Jira issue details for %s", issue_id_or_key)
@@ -78,7 +78,7 @@ async def post_jira_comment(issue_id_or_key: str, comment_body: str) -> str | No
         return None
 
     url = f"{JIRA_BASE_URL}/issue/{issue_id_or_key}/comment"
-    
+
     # Jira API v3 uses ADF (Atlassian Document Format).
     # This is a simplified ADF for a single paragraph of text.
     payload = {
@@ -126,7 +126,7 @@ async def update_jira_comment(issue_id_or_key: str, comment_id: str, comment_bod
         return False
 
     url = f"{JIRA_BASE_URL}/issue/{issue_id_or_key}/comment/{comment_id}"
-    
+
     payload = {
         "body": {
             "type": "doc",

@@ -3,18 +3,17 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
 
 from langgraph_sdk import get_client
+
+from agent.utils import config as cfg
 
 logger = logging.getLogger(__name__)
 
 
 def langgraph_url() -> str:
-    return os.environ.get("LANGGRAPH_URL") or os.environ.get(
-        "LANGGRAPH_URL_PROD", "http://localhost:2024"
-    )
+    return cfg.LANGGRAPH_URL
 
 
 def langgraph_client():

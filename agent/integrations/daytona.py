@@ -3,14 +3,13 @@ import os
 from daytona import CreateSandboxFromSnapshotParams, Daytona, DaytonaConfig
 from langchain_daytona import DaytonaSandbox
 
-DEFAULT_DAYTONA_SANDBOX_SNAPSHOT = "daytonaio/sandbox:0.6.0"
-DAYTONA_SANDBOX_SNAPSHOT_ENV = "DAYTONA_SANDBOX_SNAPSHOT"
+from agent.utils import config as cfg
 
 
 def _get_daytona_sandbox_params() -> CreateSandboxFromSnapshotParams:
-    snapshot = os.getenv(DAYTONA_SANDBOX_SNAPSHOT_ENV, DEFAULT_DAYTONA_SANDBOX_SNAPSHOT).strip()
+    snapshot = cfg.DAYTONA_SANDBOX_SNAPSHOT.strip()
     if not snapshot:
-        raise ValueError(f"{DAYTONA_SANDBOX_SNAPSHOT_ENV} must not be empty")
+        raise ValueError("DAYTONA_SANDBOX_SNAPSHOT must not be empty")
     return CreateSandboxFromSnapshotParams(snapshot=snapshot)
 
 

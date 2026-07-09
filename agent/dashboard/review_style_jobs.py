@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
 
 from langgraph_sdk import get_client
+
+from agent.utils import config as cfg
 
 from ..review_style_collector import (
     collect_review_samples,
@@ -29,9 +30,8 @@ _ASSISTANT_ID = "review_style_analyzer"
 
 def _client():
     """LangGraph SDK client for the current deployment (same resolution as webapp)."""
-    url = os.environ.get("LANGGRAPH_URL") or os.environ.get("LANGGRAPH_URL_PROD")
-    if url:
-        return get_client(url=url)
+    if cfg.LANGGRAPH_URL:
+        return get_client(url=cfg.LANGGRAPH_URL)
     return get_client()
 
 

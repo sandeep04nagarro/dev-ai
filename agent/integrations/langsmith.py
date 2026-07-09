@@ -13,13 +13,9 @@ from deepagents.backends import LangSmithSandbox
 from deepagents.backends.protocol import SandboxBackendProtocol
 from langsmith.sandbox import SandboxClient
 
-logger = logging.getLogger(__name__)
+from agent.utils import config as cfg
 
-DEFAULT_SNAPSHOT_FS_CAPACITY_BYTES = 32 * 1024**3
-DEFAULT_SANDBOX_VCPUS = 2
-DEFAULT_SANDBOX_MEM_BYTES = 7936 * 1024**2  # 7936 MiB ("large" tier cap)
-DEFAULT_SANDBOX_IDLE_TTL_SECONDS = 10 * 60  # 10 minutes
-DEFAULT_SANDBOX_DELETE_AFTER_STOP_SECONDS = 24 * 60 * 60  # 24 hours
+logger = logging.getLogger(__name__)
 
 
 def _get_langsmith_api_key() -> str | None:
@@ -31,39 +27,16 @@ def _get_langsmith_api_key() -> str | None:
     return os.environ.get("LANGSMITH_API_KEY") or os.environ.get("LANGSMITH_API_KEY_PROD")
 
 
-def _parse_optional_int(name: str, default: int) -> int:
-    raw = os.environ.get(name)
-    if not raw:
-        return default
-    try:
-        return int(raw)
-    except ValueError as e:
-        msg = f"{name} must be an integer, got {raw!r}"
-        raise ValueError(msg) from e
-
-
 def _get_sandbox_snapshot_config() -> tuple[str | None, int, int, int, int, int]:
     """Get sandbox snapshot configuration from environment."""
-    snapshot_id = os.environ.get("DEFAULT_SANDBOX_SNAPSHOT_ID")
-    fs_capacity_bytes = _parse_optional_int(
-        "DEFAULT_SANDBOX_SNAPSHOT_FS_CAPACITY_BYTES", DEFAULT_SNAPSHOT_FS_CAPACITY_BYTES
-    )
-    vcpus = _parse_optional_int("DEFAULT_SANDBOX_VCPUS", DEFAULT_SANDBOX_VCPUS)
-    mem_bytes = _parse_optional_int("DEFAULT_SANDBOX_MEM_BYTES", DEFAULT_SANDBOX_MEM_BYTES)
-    idle_ttl_seconds = _parse_optional_int(
-        "DEFAULT_SANDBOX_IDLE_TTL_SECONDS", DEFAULT_SANDBOX_IDLE_TTL_SECONDS
-    )
-    delete_after_stop_seconds = _parse_optional_int(
-        "DEFAULT_SANDBOX_DELETE_AFTER_STOP_SECONDS",
-        DEFAULT_SANDBOX_DELETE_AFTER_STOP_SECONDS,
-    )
+    snapshot_id = cfg.DEFAULT_SANDBOX_SNAPSHOT_ID or None
     return (
         snapshot_id,
-        fs_capacity_bytes,
-        vcpus,
-        mem_bytes,
-        idle_ttl_seconds,
-        delete_after_stop_seconds,
+        cfg.DEFAULT_SANDBOX_SNAPSHOT_FS_CAPACITY_BYTES,
+        cfg.DEFAULT_SANDBOX_VCPUS,
+        cfg.DEFAULT_SANDBOX_MEM_BYTES,
+        cfg.DEFAULT_SANDBOX_IDLE_TTL_SECONDS,
+        cfg.DEFAULT_SANDBOX_DELETE_AFTER_STOP_SECONDS,
     )
 
 
@@ -110,8 +83,7 @@ def _configure_github_proxy(sandbox_name: str, github_token: str) -> None:
     if not api_key:
         logger.warning("No LangSmith API key found, skipping GitHub proxy configuration")
         return
-    langsmith_endpoint = os.environ.get("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
-    url = f"{langsmith_endpoint}/v2/sandboxes/boxes/{sandbox_name}"
+    url = f"{cfg.LANGSMITH_ENDPOINT}/v2/sandboxes/boxes/{sandbox_name}"
     payload = {"proxy_config": {"rules": _github_proxy_rules(github_token)}}
     with httpx.Client() as client:
         response = client.patch(
@@ -238,25 +210,30 @@ class LangSmithProvider(SandboxProvider):
 
     @classmethod
     def validate_startup_config(cls) -> None:
-        """Validate env-var configuration at server startup. Raises ValueError if invalid."""
-        if not os.environ.get("DEFAULT_SANDBOX_SNAPSHOT_ID"):
+        if not cfg.DEFAULT_SANDBOX_SNAPSHOT_ID:
             msg = "DEFAULT_SANDBOX_SNAPSHOT_ID must be set when SANDBOX_TYPE=langsmith"
             raise ValueError(msg)
-        for name in (
-            "DEFAULT_SANDBOX_SNAPSHOT_FS_CAPACITY_BYTES",
-            "DEFAULT_SANDBOX_VCPUS",
-            "DEFAULT_SANDBOX_MEM_BYTES",
-            "DEFAULT_SANDBOX_IDLE_TTL_SECONDS",
-            "DEFAULT_SANDBOX_DELETE_AFTER_STOP_SECONDS",
+        for name, value in (
+            (
+                "DEFAULT_SANDBOX_SNAPSHOT_FS_CAPACITY_BYTES",
+                cfg.DEFAULT_SANDBOX_SNAPSHOT_FS_CAPACITY_BYTES,
+            ),
+            ("DEFAULT_SANDBOX_VCPUS", cfg.DEFAULT_SANDBOX_VCPUS),
+            ("DEFAULT_SANDBOX_MEM_BYTES", cfg.DEFAULT_SANDBOX_MEM_BYTES),
+            ("DEFAULT_SANDBOX_IDLE_TTL_SECONDS", cfg.DEFAULT_SANDBOX_IDLE_TTL_SECONDS),
+            (
+                "DEFAULT_SANDBOX_DELETE_AFTER_STOP_SECONDS",
+                cfg.DEFAULT_SANDBOX_DELETE_AFTER_STOP_SECONDS,
+            ),
         ):
-            raw = os.environ.get(name)
-            if raw is None or raw == "":
-                continue
-            try:
-                value = int(raw)
-            except ValueError as e:
-                msg = f"{name} must be an integer, got {raw!r}"
-                raise ValueError(msg) from e
+            if isinstance(value, str):
+                if value == "":
+                    continue
+                try:
+                    value = int(value)
+                except ValueError as e:
+                    msg = f"{name} must be an integer, got {value!r}"
+                    raise ValueError(msg) from e
             if (
                 name
                 in {

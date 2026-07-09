@@ -4,20 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from typing import Any
 
 from langgraph_sdk import get_client
 from langgraph_sdk.client import LangGraphClient
 
+from agent.utils import config as cfg
 from .langsmith import create_langsmith_feedback, delete_langsmith_feedback
 from .slack import lookup_slack_run_mapping
 
 logger = logging.getLogger(__name__)
 
-LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL") or os.environ.get(
-    "LANGGRAPH_URL_PROD", "http://localhost:2024"
-)
+LANGGRAPH_URL = cfg.LANGGRAPH_URL
 
 FEEDBACK_REACTIONS: dict[str, float] = {
     "+1": 1.0,

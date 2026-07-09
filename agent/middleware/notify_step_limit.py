@@ -167,8 +167,8 @@ async def _post_unified_limit_notification(
         user_message = (
             "I detected a repeating tool failure and stopped to avoid "
             "wasting more calls. "
-            "'{}'. You can retry with a more focused request, or ask me "
-            "to continue from where I left off.".format(stop_reason)
+            f"'{stop_reason}'. You can retry with a more focused request, or ask me "
+            "to continue from where I left off."
         )
     else:
         user_message = (
@@ -202,9 +202,7 @@ async def _post_unified_limit_notification(
     if github_target is not None:
         token = get_github_token(config) or await get_github_app_installation_token()
         if not token:
-            logger.info(
-                "No GitHub token available — cannot post limit notification on GitHub"
-            )
+            logger.info("No GitHub token available — cannot post limit notification on GitHub")
         else:
             repo, issue_number = github_target
             tasks.append(
@@ -260,9 +258,7 @@ async def notify_step_limit_reached(
     try:
         config = get_config()
     except Exception:
-        logger.exception(
-            "Failed to read runtime config while posting limit notification"
-        )
+        logger.exception("Failed to read runtime config while posting limit notification")
         return None
 
     try:
@@ -289,6 +285,4 @@ class SafeGather:
             except Exception as exc:  # noqa: BLE001
                 return label, exc
 
-        return list(
-            await asyncio.gather(*(_run(label, coro) for label, coro in tasks))
-        )
+        return list(await asyncio.gather(*(_run(label, coro) for label, coro in tasks)))

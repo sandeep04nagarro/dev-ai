@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import Any
 
 from deepagents import create_deep_agent
@@ -18,6 +17,7 @@ from agent.server import (
     graph_loaded_for_execution,
 )
 from agent.tools import fetch_url, http_request, web_search
+from agent.utils import config as cfg
 from agent.utils.model import fallback_model_id_for, make_model, provider_model_kwargs
 from agent.utils.sandbox_paths import aresolve_sandbox_work_dir
 from agent.utils.tracing import get_langfuse_handler
@@ -25,7 +25,7 @@ from agent.utils.tracing_diagnostics import _AttrsStore
 
 logger = logging.getLogger(__name__)
 
-if os.getenv("DEBUG_MODE", "").lower() in ("on", "1", "true"):
+if cfg.DEBUG_MODE:
     logger.setLevel(logging.DEBUG)
 
 
@@ -43,7 +43,7 @@ async def get_recon_agent(config: RunnableConfig) -> Pregel:
     sandbox_backend = await ensure_sandbox_for_thread(thread_id)
     work_dir = await aresolve_sandbox_work_dir(sandbox_backend)
 
-    model_id = os.environ.get("RECON_MODEL_ID", "openai:gpt-4o-mini")
+    model_id = cfg.RECON_MODEL_ID
     model_kwargs = provider_model_kwargs(model_id, None, max_tokens=4000)
     model = make_model(model_id, **model_kwargs)
 

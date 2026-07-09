@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import warnings
 
 from langgraph.graph.state import RunnableConfig
@@ -34,10 +33,11 @@ from .server import (
     graph_loaded_for_execution,
 )
 from .tools.save_review_style import save_review_style_prompt
+from agent.utils import config as cfg
 from .utils.model import DEFAULT_LLM_REASONING, make_model, provider_model_kwargs
 from .utils.sandbox_paths import aresolve_sandbox_work_dir
-from .utils.tracing import get_langfuse_handler
 from .utils.sandbox_state import unwrap_sandbox_backend
+from agent.utils.tracing import get_langfuse_handler
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +99,7 @@ async def _configure_sandbox_github_proxy(
     sandbox_backend: SandboxBackendProtocol,
     github_token: str,
 ) -> None:
-    if os.getenv("SANDBOX_TYPE", "langsmith") != "langsmith":
+    if cfg.SANDBOX_TYPE != "langsmith":
         return
     backend = unwrap_sandbox_backend(sandbox_backend)
     await asyncio.to_thread(_configure_github_proxy, backend.id, github_token)
@@ -127,11 +127,9 @@ async def get_review_style_analyzer(config: RunnableConfig) -> Pregel:
     if isinstance(github_token, str) and github_token:
         await _configure_sandbox_github_proxy(sandbox_backend, github_token)
 
-    model_id = DEFAULT_LLM_MODEL_ID
-    env_model_id = os.environ.get("LLM_MODEL_ID")
-    if env_model_id:
-        model_id = env_model_id
-        logger.info("Using LLM_MODEL_ID environment override for style analyzer: %s", model_id)
+    model_id = cfg.LLM_MODEL_ID or DEFAULT_LLM_MODEL_ID
+    if cfg.LLM_MODEL_ID:
+        logger.info("Using LLM_MODEL_ID config override for style analyzer: %s", model_id)
 
     model_kwargs = provider_model_kwargs(
         model_id,
@@ -141,8 +139,7 @@ async def get_review_style_analyzer(config: RunnableConfig) -> Pregel:
     )
 
     # Determine GitHub auth prefix based on sandbox type
-    sandbox_type = os.getenv("SANDBOX_TYPE", "langsmith")
-    gh_auth_prefix = "GH_TOKEN=dummy " if sandbox_type == "langsmith" else ""
+    gh_auth_prefix = "GH_TOKEN=dummy " if cfg.SANDBOX_TYPE == "langsmith" else ""
 
     system_prompt = STYLE_ANALYZER_PROMPT.format(
         repo_owner=owner or "<owner>",

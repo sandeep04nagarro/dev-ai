@@ -88,7 +88,5 @@ class ReconFallbackMiddleware(AgentMiddleware[AgentState, Any]):
         if not _has_stop_marker(content):
             return None
 
-        logger.info(
-            "Recon fallback triggered — last message contains stop marker"
-        )
+        logger.info("Recon fallback triggered — last message contains stop marker")
         return {"messages": [AIMessage(content=_FALLBACK_JSON_BLOCK)]}
