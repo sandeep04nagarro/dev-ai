@@ -102,7 +102,7 @@ def test_strip_bot_mention_removes_bot_tag() -> None:
 
 def test_strip_bot_mention_removes_bot_username_tag() -> None:
     assert (
-        strip_bot_mention("@open-swe please check", "UBOT", bot_username="open-swe")
+        strip_bot_mention("@dev-agent please check", "UBOT", bot_username="open-swe")
         == "please check"
     )
 
@@ -110,7 +110,7 @@ def test_strip_bot_mention_removes_bot_username_tag() -> None:
 def test_replace_bot_mention_with_username() -> None:
     assert (
         replace_bot_mention_with_username("<@UBOT> can you help?", "UBOT", "open-swe")
-        == "@open-swe can you help?"
+        == "@dev-agent can you help?"
     )
 
 
@@ -218,7 +218,7 @@ def test_format_slack_messages_for_prompt_replaces_bot_id_mention_in_text() -> N
         bot_username="open-swe",
     )
 
-    assert formatted == "@alice(U123): @open-swe status update?"
+    assert formatted == "@alice(U123): @dev-agent status update?"
 
 
 def test_post_slack_trace_reply_emits_tip_only_when_no_trace_url(
@@ -288,9 +288,9 @@ def test_post_slack_trace_reply_includes_trace_link_and_tip(
 def test_select_slack_context_messages_detects_username_mention() -> None:
     selected, mode = select_slack_context_messages(
         [
-            {"ts": "1.0", "text": "@open-swe first request", "user": "U1"},
+            {"ts": "1.0", "text": "@dev-agent first request", "user": "U1"},
             {"ts": "2.0", "text": "follow up", "user": "U2"},
-            {"ts": "3.0", "text": "@open-swe second request", "user": "U3"},
+            {"ts": "3.0", "text": "@dev-agent second request", "user": "U3"},
         ],
         "3.0",
         bot_user_id="UBOT",

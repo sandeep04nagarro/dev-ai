@@ -138,7 +138,7 @@ def test_github_webhook_accepts_issue_events(monkeypatch) -> None:
             "issue": {
                 "id": 12345,
                 "number": 42,
-                "title": "@openswe fix the flaky test",
+                "title": "@dev-agent fix the flaky test",
                 "body": "The test is failing intermittently.",
             },
             "repository": {"owner": {"login": "langchain-ai"}, "name": "open-swe"},
@@ -171,7 +171,7 @@ def test_github_webhook_ignores_issue_events_without_body_or_title_change(monkey
             "issue": {
                 "id": 12345,
                 "number": 42,
-                "title": "@openswe fix the flaky test",
+                "title": "@dev-agent fix the flaky test",
                 "body": "The test is failing intermittently.",
             },
             "repository": {"owner": {"login": "langchain-ai"}, "name": "open-swe"},
@@ -201,7 +201,7 @@ def test_github_webhook_accepts_issue_comment_events(monkeypatch) -> None:
         {
             "action": "created",
             "issue": {"id": 12345, "number": 42, "title": "Fix the flaky test"},
-            "comment": {"body": "@openswe please handle this"},
+            "comment": {"body": "@dev-agent please handle this"},
             "repository": {"owner": {"login": "langchain-ai"}, "name": "open-swe"},
             "sender": {"login": "octocat"},
         },
@@ -241,9 +241,9 @@ def test_github_webhook_ignores_unmentioned_comment_without_info_log(monkeypatch
     assert response.status_code == 200
     assert response.json() == {
         "status": "ignored",
-        "reason": "Comment does not mention @openswe or @open-swe",
+        "reason": "Comment does not mention @dev-agent",
     }
-    assert "does not mention @openswe or @open-swe" not in caplog.text
+    assert "does not mention @dev-agent" not in caplog.text
 
 
 def test_github_webhook_routes_review_comment_reply_without_tag(monkeypatch) -> None:
@@ -474,7 +474,7 @@ def test_github_webhook_ignores_unsupported_comment_action(monkeypatch) -> None:
         "pull_request_review",
         {
             "action": "dismissed",
-            "review": {"body": "@openswe please check this"},
+            "review": {"body": "@dev-agent please check this"},
             "pull_request": {
                 "number": 1244,
                 "html_url": "https://github.com/langchain-ai/open-swe/pull/1244",
@@ -1172,7 +1172,7 @@ def test_process_github_pr_comment_review_request_without_email_uses_app_token(
 
     async def fake_fetch_comments(repo_config: dict[str, str], pr_number: int, *, token: str):
         captured["fetch_token"] = token
-        return [{"body": "@open-swe review", "author": "external-user", "created_at": "now"}]
+        return [{"body": "@dev-agent review", "author": "external-user", "created_at": "now"}]
 
     async def fake_trigger_or_queue_run(*args, **kwargs) -> None:
         captured["triggered"] = {"args": args, "kwargs": kwargs}
@@ -1190,7 +1190,7 @@ def test_process_github_pr_comment_review_request_without_email_uses_app_token(
     asyncio.run(
         webapp.process_github_pr_comment(
             {
-                "comment": {"id": 9, "body": "@open-swe review"},
+                "comment": {"id": 9, "body": "@dev-agent review"},
                 "sender": {"login": "external-user", "id": 123},
             },
             "issue_comment",
@@ -1270,7 +1270,7 @@ def test_process_github_issue_uses_resolved_user_token_for_reaction(monkeypatch)
                     "body": "The test is failing intermittently.",
                     "html_url": "https://github.com/langchain-ai/open-swe/issues/42",
                 },
-                "comment": {"id": 999, "body": "@openswe please handle this"},
+                "comment": {"id": 999, "body": "@dev-agent please handle this"},
                 "repository": {"owner": {"login": "langchain-ai"}, "name": "open-swe"},
                 "sender": {"login": "octocat"},
             },
@@ -1350,7 +1350,7 @@ def test_process_github_issue_existing_thread_uses_followup_prompt(monkeypatch) 
                 },
                 "comment": {
                     "id": 999,
-                    "body": "@openswe please handle this",
+                    "body": "@dev-agent please handle this",
                     "user": {"login": "octocat"},
                 },
                 "repository": {"owner": {"login": "langchain-ai"}, "name": "open-swe"},
@@ -1360,34 +1360,34 @@ def test_process_github_issue_existing_thread_uses_followup_prompt(monkeypatch) 
         )
     )
 
-    assert captured["prompt"] == "**octocat:**\n@openswe please handle this"
+    assert captured["prompt"] == "**octocat:**\n@dev-agent please handle this"
     assert "## Repository" not in captured["prompt"]
 
 
 def test_parse_github_review_command_standalone() -> None:
-    is_review, url = github_comments.parse_github_review_command("@open-swe review")
+    is_review, url = github_comments.parse_github_review_command("@dev-agent review")
     assert is_review is True
     assert url is None
 
 
 def test_parse_github_review_command_with_url() -> None:
     is_review, url = github_comments.parse_github_review_command(
-        "@open-swe review https://github.com/langchain-ai/open-swe/pull/1244"
+        "@dev-agent review https://github.com/langchain-ai/open-swe/pull/1244"
     )
     assert is_review is True
     assert url == "https://github.com/langchain-ai/open-swe/pull/1244"
 
 
 def test_parse_github_review_command_case_insensitive_and_aliases() -> None:
-    assert github_comments.parse_github_review_command("@OpenSWE Review") == (True, None)
-    assert github_comments.parse_github_review_command("@openswe review") == (True, None)
-    assert github_comments.parse_github_review_command("@openswe-dev review") == (True, None)
+    assert github_comments.parse_github_review_command("@dev-agent Review") == (True, None)
+    assert github_comments.parse_github_review_command("@dev-agent review") == (True, None)
+    assert github_comments.parse_github_review_command("@dev-agent-dev review") == (True, None)
 
 
 def test_parse_github_review_command_freeform_does_not_match() -> None:
-    assert github_comments.parse_github_review_command("@open-swe review my code") == (False, None)
-    assert github_comments.parse_github_review_command("@open-swe please review") == (False, None)
-    assert github_comments.parse_github_review_command("@open-swe fix this") == (False, None)
+    assert github_comments.parse_github_review_command("@dev-agent review my code") == (False, None)
+    assert github_comments.parse_github_review_command("@dev-agent please review") == (False, None)
+    assert github_comments.parse_github_review_command("@dev-agent fix this") == (False, None)
     assert github_comments.parse_github_review_command("") == (False, None)
 
 
@@ -1395,14 +1395,14 @@ def test_parse_github_review_command_does_not_swallow_trailing_text() -> None:
     # Trailing text after `review` (on a new line, with punctuation, or extra
     # words) must NOT be parsed as a URL — otherwise the comment would be
     # silently dropped instead of falling through to the regular handler.
-    assert github_comments.parse_github_review_command("@open-swe review\nthanks!") == (
+    assert github_comments.parse_github_review_command("@dev-agent review\nthanks!") == (
         False,
         None,
     )
-    assert github_comments.parse_github_review_command("@open-swe review please") == (False, None)
-    assert github_comments.parse_github_review_command("@open-swe review now") == (False, None)
+    assert github_comments.parse_github_review_command("@dev-agent review please") == (False, None)
+    assert github_comments.parse_github_review_command("@dev-agent review now") == (False, None)
     # Non-http schemes are not URLs we can route to a PR.
-    assert github_comments.parse_github_review_command("@open-swe review ftp://x/y/pull/1") == (
+    assert github_comments.parse_github_review_command("@dev-agent review ftp://x/y/pull/1") == (
         False,
         None,
     )
@@ -1436,7 +1436,7 @@ def test_github_webhook_routes_pr_comment_review_to_agent(monkeypatch) -> None:
                 "number": 1244,
                 "pull_request": {"url": "https://api.github.com/repos/x/y/pulls/1244"},
             },
-            "comment": {"id": 9, "body": "@open-swe review"},
+            "comment": {"id": 9, "body": "@dev-agent review"},
             "repository": {"owner": {"login": "langchain-ai"}, "name": "open-swe"},
             "sender": {"login": "octocat"},
         },
@@ -1469,7 +1469,7 @@ def test_github_webhook_routes_pr_review_request_comment_to_agent(monkeypatch) -
                 "number": 1244,
                 "pull_request": {"url": "https://api.github.com/repos/x/y/pulls/1244"},
             },
-            "comment": {"id": 9, "body": "@open-swe review"},
+            "comment": {"id": 9, "body": "@dev-agent review"},
             "repository": {"owner": {"login": "langchain-ai"}, "name": "public-demo"},
             "sender": {"login": "octocat"},
         },
@@ -1516,7 +1516,7 @@ def test_process_github_pr_review_command_uses_payload_pr(monkeypatch) -> None:
                     "html_url": "https://github.com/langchain-ai/open-swe/pull/1244",
                     "pull_request": {"url": "..."},
                 },
-                "comment": {"id": 9, "body": "@open-swe review"},
+                "comment": {"id": 9, "body": "@dev-agent review"},
                 "repository": {"owner": {"login": "langchain-ai"}, "name": "open-swe"},
                 "sender": {"login": "octocat", "id": 123},
             },
@@ -1566,7 +1566,7 @@ def test_process_github_pr_review_command_uses_url_override(monkeypatch) -> None
         webapp.process_github_pr_review_command(
             {
                 "issue": {"number": 99, "pull_request": {"url": "..."}},
-                "comment": {"id": 1, "body": "@open-swe review https://github.com/x/y/pull/7"},
+                "comment": {"id": 1, "body": "@dev-agent review https://github.com/x/y/pull/7"},
                 "repository": {"owner": {"login": "x"}, "name": "y"},
                 "sender": {"login": "octocat", "id": 1},
             },
