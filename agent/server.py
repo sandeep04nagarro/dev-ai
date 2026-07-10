@@ -176,9 +176,10 @@ async def _configure_git_identity(sandbox_backend: SandboxBackendProtocol) -> No
     await asyncio.to_thread(
         sandbox_backend.execute,
         "git config --global user.name 'open-swe[bot]' && "
-        "git config --global user.email 'open-swe@users.noreply.github.com' && "
-        "git config --global credential.helper "
-        "'!f() { echo \"username=x-access-token\"; echo \"password=$GH_TOKEN\"; }; f'",
+        "git config --global user.email 'open-swe@users.noreply.github.com'" 
+        # && "
+    #     "git config --global credential.helper "
+    #     "'!f() { echo \"username=x-access-token\"; echo \"password=$GH_TOKEN\"; }; f'",
     )
 
 

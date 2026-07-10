@@ -118,7 +118,7 @@ FILE_MANAGEMENT_SECTION = """---
 - Use the appropriate package manager to install dependencies if needed."""
 
 
-TASK_EXECUTION_SECTION = " ".join("""---
+TASK_EXECUTION_SECTION = " ".join(("""---
 
 ### Task Execution
 
@@ -153,10 +153,9 @@ For questions or status checks (no code changes needed):
 """`slack_thread_reply` for """,
 # Linear/
 """Slack. For GitHub-triggered tasks, use `{gh_auth_prefix}gh issue comment` or `{gh_auth_prefix}gh pr comment`. Never leave a question unanswered.
-3. **Do not submit changes** — Do not commit, push, or open/update a PR unless the user then asks for changes.""")
+3. **Do not submit changes** — Do not commit, push, or open/update a PR unless the user then asks for changes."""))
 
-
-TOOL_USAGE_SECTION = """---
+TOOL_USAGE_SECTION = " ".join(("""---
 
 ### Tool Usage
 
@@ -183,7 +182,7 @@ Format messages using Slack's mrkdwn format, NOT standard Markdown.
     To mention/tag a user, use `<@USER_ID>` (e.g. `<@U06KD8BFY95>`). You can find user IDs in the conversation context next to display names (e.g. `@Name(U06KD8BFY95)`).
 
 #### GitHub via `gh`
-Use `{gh_auth_prefix}gh <command>` for GitHub operations: repository discovery, cloning, issues, pull requests, reviews, comments, labels, check status, and workflow operations. For local working-tree state, use `git` directly. Never pass a real GitHub token to `gh`."""
+Use `{gh_auth_prefix}gh <command>` for GitHub operations: repository discovery, cloning, issues, pull requests, reviews, comments, labels, check status, and workflow operations. For local working-tree state, use `git` directly. Never pass a real GitHub token to `gh`."""))
 
 
 TOOL_BEST_PRACTICES_SECTION = """---
@@ -284,7 +283,7 @@ When reviewing code changes:
 9. **Prefer pre-made scripts** for testing, formatting, linting, etc. If unsure whether a script exists, search for it first."""
 
 
-COMMIT_PR_SECTION = " ".join("""---
+COMMIT_PR_SECTION = " ".join(("""---
 
 ### Committing Changes and Opening Pull Requests
 
@@ -365,7 +364,7 @@ When you have completed your implementation, follow these steps in order:
    - <change 2>
    ```
 
-For code-change tasks, push the branch and notify the appropriate source once implementation is complete and code quality checks pass. Include the PR link when you opened or updated a PR; otherwise include the branch URL.""")
+For code-change tasks, push the branch and notify the appropriate source once implementation is complete and code quality checks pass. Include the PR link when you opened or updated a PR; otherwise include the branch URL."""))
 
 
 COLLABORATION_TEMPLATE = """---

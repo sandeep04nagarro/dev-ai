@@ -1,5 +1,5 @@
 from deepagents.backends.protocol import SandboxBackendProtocol
-
+import asyncio
 from agent.integrations.daytona import create_daytona_sandbox
 from agent.integrations.docker import create_docker_sandbox
 # from agent.integrations.langsmith import create_langsmith_sandbox
@@ -18,7 +18,7 @@ SANDBOX_FACTORIES = {
 }
 
 
-def create_sandbox(sandbox_id: str | None = None) -> SandboxBackendProtocol:
+async def create_sandbox(sandbox_id: str | None = None) -> SandboxBackendProtocol:
     """Create or reconnect to a sandbox using the configured provider.
 
     The provider is selected via the SANDBOX_TYPE environment variable.
@@ -35,7 +35,7 @@ def create_sandbox(sandbox_id: str | None = None) -> SandboxBackendProtocol:
     if not factory:
         supported = ", ".join(sorted(SANDBOX_FACTORIES))
         raise ValueError(f"Invalid sandbox type: {sandbox_type}. Supported types: {supported}")
-    return factory(sandbox_id)
+    return await asyncio.to_thread(factory,sandbox_id)
 
 
 # def validate_sandbox_startup_config() -> None:

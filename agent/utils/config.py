@@ -67,7 +67,7 @@ DASHBOARD_ALLOWED_ORIGINS: str = ""
 
 # ── Recon Agent ──
 RECON_MODEL_ID: str = "deepseek-v4-flash"
-RECON_ENABLED: bool = True
+RECON_ENABLED: bool = False
 RECON_STEP_LIMIT: int = 50
 
 # ── Middleware ──
