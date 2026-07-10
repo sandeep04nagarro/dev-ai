@@ -18,7 +18,7 @@ from agent.utils import config as cfg
 from .github_app import get_github_app_installation_token_with_expiry
 from .github_token import get_github_token_from_thread
 from .github_user_email_map import GITHUB_USER_EMAIL_MAP
-from .linear import comment_on_linear_issue
+# from .linear import comment_on_linear_issue
 from .slack import post_slack_ephemeral_message, post_slack_thread_reply
 
 logger = logging.getLogger(__name__)
@@ -228,17 +228,17 @@ async def leave_failure_comment(
     config = get_config()
     configurable = config.get("configurable", {})
 
-    if source == "linear":
-        linear_issue = configurable.get("linear_issue", {})
-        issue_id = linear_issue.get("id") if isinstance(linear_issue, dict) else None
-        if issue_id:
-            logger.info(
-                "Posting auth failure comment to Linear issue %s (source=%s)",
-                issue_id,
-                source,
-            )
-            await comment_on_linear_issue(issue_id, message)
-        return
+    # if source == "linear":
+    #     linear_issue = configurable.get("linear_issue", {})
+    #     issue_id = linear_issue.get("id") if isinstance(linear_issue, dict) else None
+    #     if issue_id:
+    #         logger.info(
+    #             "Posting auth failure comment to Linear issue %s (source=%s)",
+    #             issue_id,
+    #             source,
+    #         )
+    #         await comment_on_linear_issue(issue_id, message)
+    #     return
     if source == "slack":
         slack_thread = configurable.get("slack_thread", {})
         channel_id = slack_thread.get("channel_id") if isinstance(slack_thread, dict) else None

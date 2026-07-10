@@ -24,7 +24,7 @@ from langgraph.runtime import Runtime
 from agent.utils.github_app import get_github_app_installation_token
 from agent.utils.github_comments import post_github_comment
 from agent.utils.github_token import get_github_token
-from agent.utils.linear import comment_on_linear_issue
+# from agent.utils.linear import comment_on_linear_issue
 from agent.utils.slack import post_slack_thread_reply
 
 logger = logging.getLogger(__name__)
@@ -67,17 +67,17 @@ def _get_slack_target(configurable: Mapping[str, Any]) -> tuple[str, str] | None
     return channel_id, thread_ts
 
 
-def _get_linear_issue_id(configurable: Mapping[str, Any]) -> str | None:
-    """Extract the Linear issue ``id`` from thread metadata.
+# def _get_linear_issue_id(configurable: Mapping[str, Any]) -> str | None:
+#     """Extract the Linear issue ``id`` from thread metadata.
 
-    Returns ``None`` when the thread was not triggered from Linear or the
-    id field is absent.
-    """
-    linear_issue = configurable.get("linear_issue")
-    if not isinstance(linear_issue, Mapping):
-        return None
-    issue_id = linear_issue.get("id")
-    return issue_id if isinstance(issue_id, str) and issue_id else None
+#     Returns ``None`` when the thread was not triggered from Linear or the
+#     id field is absent.
+#     """
+#     linear_issue = configurable.get("linear_issue")
+#     if not isinstance(linear_issue, Mapping):
+#         return None
+#     issue_id = linear_issue.get("id")
+#     return issue_id if isinstance(issue_id, str) and issue_id else None
 
 
 def _coerce_issue_number(value: object) -> int | None:
@@ -189,14 +189,14 @@ async def _post_unified_limit_notification(
             )
         )
 
-    linear_issue_id = _get_linear_issue_id(configurable)
-    if linear_issue_id is not None:
-        tasks.append(
-            (
-                "linear",
-                comment_on_linear_issue(linear_issue_id, user_message),
-            )
-        )
+    # linear_issue_id = _get_linear_issue_id(configurable)
+    # if linear_issue_id is not None:
+    #     tasks.append(
+    #         (
+    #             "linear",
+    #             comment_on_linear_issue(linear_issue_id, user_message),
+    #         )
+    #     )
 
     github_target = _get_github_target(configurable)
     if github_target is not None:

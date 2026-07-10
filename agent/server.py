@@ -21,6 +21,7 @@ import asyncio
 warnings.filterwarnings("ignore", message=".*Pydantic V1.*", category=UserWarning)
 
 from deepagents import create_deep_agent
+
 # from deepagents.backends import LangSmithSandbox
 from deepagents.backends.protocol import SandboxBackendProtocol
 from deepagents.middleware.subagents import GENERAL_PURPOSE_SUBAGENT, SubAgent
@@ -43,19 +44,20 @@ from .dashboard.agent_overrides import (
 )
 from .dashboard.options import DEFAULT_MODEL_ID, SUPPORTED_MODEL_IDS, model_supports_effort
 from .dashboard.team_settings import get_team_default_model, get_team_default_subagent_model
+
 # from .integrations.langsmith import _configure_github_proxy
 from .prompt import construct_system_prompt
 from .tools import (
     fetch_url,
     http_request,
     jira_comment,
-    linear_comment,
-    linear_create_issue,
-    linear_delete_issue,
-    linear_get_issue,
-    linear_get_issue_comments,
-    linear_list_teams,
-    linear_update_issue,
+    # linear_comment,
+    # linear_create_issue,
+    # linear_delete_issue,
+    # linear_get_issue,
+    # linear_get_issue_comments,
+    # linear_list_teams,
+    # linear_update_issue,
     request_pr_review,
     slack_read_thread_messages,
     slack_thread_reply,
@@ -63,7 +65,7 @@ from .tools import (
 )
 from .utils.auth import resolve_github_token
 from .utils.authorship import resolve_triggering_user_identity
-from .utils.github_app import get_github_app_installation_token
+# from .utils.github_app import get_github_app_installation_token
 from .utils.model import (
     DEFAULT_LLM_REASONING,
     ModelKwargs,
@@ -86,9 +88,8 @@ from agent.utils.sandbox_state import (
     SANDBOX_BACKENDS,
     get_sandbox_id_from_metadata,
     set_sandbox_backend,
-    unwrap_sandbox_backend,
+    # unwrap_sandbox_backend,
 )
-
 
 # async def _start_langsmith_sandbox_if_needed(sandbox_backend: SandboxBackendProtocol) -> None:
 #     """Start a LangSmith sandbox before operations that require it to be running."""
@@ -277,7 +278,7 @@ async def ensure_sandbox_for_thread(thread_id: str) -> SandboxBackendProtocol:
 
     if sandbox_backend:
         logger.info("Using cached sandbox backend for thread %s", thread_id)
-        original_sandbox_id = sandbox_backend.id
+        # original_sandbox_id = sandbox_backend.id
         sandbox_backend = await check_or_recreate_sandbox(sandbox_backend, thread_id)
         # if sandbox_backend.id == original_sandbox_id:
         #     sandbox_backend = await _refresh_github_proxy_or_recreate(sandbox_backend, thread_id)
@@ -314,7 +315,7 @@ async def ensure_sandbox_for_thread(thread_id: str) -> SandboxBackendProtocol:
                 await client.threads.update(thread_id=thread_id, metadata={"sandbox_id": None})
                 raise
         if not created_replacement_sandbox:
-            original_sandbox_id = sandbox_backend.id
+            # original_sandbox_id = sandbox_backend.id
             sandbox_backend = await check_or_recreate_sandbox(sandbox_backend, thread_id)
             # if sandbox_backend.id == original_sandbox_id:
             #     sandbox_backend = await _refresh_github_proxy_or_recreate(
@@ -382,9 +383,9 @@ async def get_agent(config: RunnableConfig) -> Pregel:
 
     sandbox_backend = await ensure_sandbox_for_thread(thread_id)
 
-    linear_issue = config["configurable"].get("linear_issue", {})
-    linear_project_id = linear_issue.get("linear_project_id", "")
-    linear_issue_number = linear_issue.get("linear_issue_number", "")
+    # linear_issue = config["configurable"].get("linear_issue", {})
+    # linear_project_id = linear_issue.get("linear_project_id", "")
+    # linear_issue_number = linear_issue.get("linear_issue_number", "")
 
     work_dir = await aresolve_sandbox_work_dir(sandbox_backend)
 
@@ -515,8 +516,8 @@ async def get_agent(config: RunnableConfig) -> Pregel:
         model=main_model,
         system_prompt=construct_system_prompt(
             working_dir=work_dir,
-            linear_project_id=linear_project_id,
-            linear_issue_number=linear_issue_number,
+            # linear_project_id=linear_project_id,
+            # linear_issue_number=linear_issue_number,
             triggering_user_identity=triggering_user_identity,
             create_prs=always_create_prs,
         ),
@@ -525,13 +526,13 @@ async def get_agent(config: RunnableConfig) -> Pregel:
             fetch_url,
             web_search,
             jira_comment,
-            linear_comment,
-            linear_create_issue,
-            linear_delete_issue,
-            linear_get_issue,
-            linear_get_issue_comments,
-            linear_list_teams,
-            linear_update_issue,
+            # linear_comment,
+            # linear_create_issue,
+            # linear_delete_issue,
+            # linear_get_issue,
+            # linear_get_issue_comments,
+            # linear_list_teams,
+            # linear_update_issue,
             request_pr_review,
             slack_read_thread_messages,
             slack_thread_reply,

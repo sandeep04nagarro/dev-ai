@@ -6,8 +6,8 @@ import json
 import logging
 import os
 import uuid
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+# from collections.abc import AsyncIterator
+# from contextlib import asynccontextmanager
 from typing import Any
 from urllib.parse import quote
 
@@ -18,11 +18,17 @@ from langchain_core.messages.content import create_text_block
 from langgraph_sdk import get_client
 from langgraph_sdk.client import LangGraphClient
 
+from agent.utils import config as cfg
 from agent.utils.complexity_classifier import (
     decide_tier,
     parse_recon_output,
     run_layer_0,
     ticket_hash,
+)
+from agent.utils.jira import (
+    extract_adf_text,
+    fetch_jira_issue_details,
+    # post_jira_trace_comment,
 )
 from agent.utils.repo import extract_repo_from_text
 from agent.utils.repo_selector import select_repos_for_ticket
@@ -49,15 +55,14 @@ from .reviewer_findings import (
 )
 from .reviewer_publish import fetch_pr_review_threads
 from .reviewer_reconcile import reconcile_findings_with_review_threads
-from agent.utils import config as cfg
 from .utils.auth import (
     is_bot_token_only_mode,
     persist_encrypted_github_token,
     # resolve_github_token_from_email,
-    resolve_github_token
+    resolve_github_token,
 )
 from .utils.authorship import OPEN_SWE_BOT_NAME
-from .utils.comments import get_recent_comments
+# from .utils.comments import get_recent_comments
 from .utils.github_app import (
     get_github_app_installation_token,
     get_github_app_installation_token_with_expiry,
@@ -79,14 +84,11 @@ from .utils.github_comments import (
 from .utils.github_org_membership import INTERNAL_BOT_LOGINS, is_user_active_org_member
 from .utils.github_token import get_github_token_from_thread, invalidate_cached_github_token
 from .utils.github_user_email_map import GITHUB_USER_EMAIL_MAP
-from agent.utils.jira import (
-    extract_adf_text,
-    fetch_jira_issue_details,
-    # post_jira_trace_comment,
-)
+
 # from .utils.linear import post_linear_trace_comment
-from .utils.linear_team_repo_map import LINEAR_TEAM_TO_REPO
+# from .utils.linear_team_repo_map import LINEAR_TEAM_TO_REPO
 from .utils.multimodal import dedupe_urls, extract_image_urls, fetch_image_block
+
 # from .utils.sandbox import validate_sandbox_startup_config
 from .utils.slack import (
     GitHubPrRef,
@@ -141,7 +143,7 @@ if DASHBOARD_ALLOWED_ORIGINS:
 
 app.include_router(dashboard_router)
 
-LINEAR_WEBHOOK_SECRET = os.environ.get("LINEAR_WEBHOOK_SECRET", "")
+# LINEAR_WEBHOOK_SECRET = os.environ.get("LINEAR_WEBHOOK_SECRET", "")
 JIRA_WEBHOOK_SECRET = os.environ.get("JIRA_WEBHOOK_SECRET", "")
 JIRA_BOT_NAME = cfg.JIRA_BOT_NAME
 GITHUB_WEBHOOK_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "")
@@ -168,7 +170,7 @@ ALLOWED_GITHUB_REPOS: frozenset[str] = frozenset(
     repo.strip().lower() for repo in cfg.ALLOWED_GITHUB_REPOS.split(",") if repo.strip()
 )
 
-LINEAR_API_KEY = os.environ.get("LINEAR_API_KEY", "")
+# LINEAR_API_KEY = os.environ.get("LINEAR_API_KEY", "")
 
 _GITHUB_BOT_MESSAGE_PREFIXES = (
     "🔐 **GitHub Authentication Required**",
@@ -181,140 +183,140 @@ _GITHUB_BOT_MESSAGE_PREFIXES = (
 )
 
 
-def get_repo_config_from_team_mapping(
-    team_identifier: str, project_name: str = ""
-) -> dict[str, str]:
-    """Look up repository configuration from LINEAR_TEAM_TO_REPO mapping."""
-    fallback = {"owner": DEFAULT_REPO_OWNER, "name": DEFAULT_REPO_NAME}
+# def get_repo_config_from_team_mapping(
+#     team_identifier: str, project_name: str = ""
+# ) -> dict[str, str]:
+#     """Look up repository configuration from LINEAR_TEAM_TO_REPO mapping."""
+#     fallback = {"owner": DEFAULT_REPO_OWNER, "name": DEFAULT_REPO_NAME}
 
-    if not team_identifier or team_identifier not in LINEAR_TEAM_TO_REPO:
-        return fallback
+#     if not team_identifier or team_identifier not in LINEAR_TEAM_TO_REPO:
+#         return fallback
 
-    config = LINEAR_TEAM_TO_REPO[team_identifier]
+#     config = LINEAR_TEAM_TO_REPO[team_identifier]
 
-    if "owner" in config and "name" in config:
-        return config
+#     if "owner" in config and "name" in config:
+#         return config
 
-    if "projects" in config and project_name:
-        project_config = config["projects"].get(project_name)
-        if project_config:
-            return project_config
+#     if "projects" in config and project_name:
+#         project_config = config["projects"].get(project_name)
+#         if project_config:
+#             return project_config
 
-    if "default" in config:
-        return config["default"]
+#     if "default" in config:
+#         return config["default"]
 
-    return fallback
-
-
-async def react_to_linear_comment(comment_id: str, emoji: str = "👀") -> bool:
-    """Add an emoji reaction to a Linear comment.
-
-    Args:
-        comment_id: The Linear comment ID
-        emoji: The emoji to react with (default: eyes 👀)
-
-    Returns:
-        True if successful, False otherwise
-    """
-    if not LINEAR_API_KEY:
-        return False
-
-    url = "https://api.linear.app/graphql"
-
-    mutation = """
-    mutation ReactionCreate($commentId: String!, $emoji: String!) {
-        reactionCreate(input: { commentId: $commentId, emoji: $emoji }) {
-            success
-        }
-    }
-    """
-
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(
-                url,
-                headers={
-                    "Authorization": LINEAR_API_KEY,
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "query": mutation,
-                    "variables": {"commentId": comment_id, "emoji": emoji},
-                },
-            )
-            response.raise_for_status()
-            result = response.json()
-            return bool(result.get("data", {}).get("reactionCreate", {}).get("success"))
-        except Exception:  # noqa: BLE001
-            return False
+#     return fallback
 
 
-async def fetch_linear_issue_details(issue_id: str) -> dict[str, Any] | None:
-    """Fetch full issue details from Linear API including description and comments.
+# async def react_to_linear_comment(comment_id: str, emoji: str = "👀") -> bool:
+#     """Add an emoji reaction to a Linear comment.
 
-    Args:
-        issue_id: The Linear issue ID
+#     Args:
+#         comment_id: The Linear comment ID
+#         emoji: The emoji to react with (default: eyes 👀)
 
-    Returns:
-        Full issue data dict, or None if fetch failed
-    """
-    if not LINEAR_API_KEY:
-        return None
+#     Returns:
+#         True if successful, False otherwise
+#     """
+#     if not LINEAR_API_KEY:
+#         return False
 
-    url = "https://api.linear.app/graphql"
+#     url = "https://api.linear.app/graphql"
 
-    query = """
-    query GetIssue($issueId: String!) {
-        issue(id: $issueId) {
-            id
-            identifier
-            title
-            description
-            url
-            project {
-                id
-                name
-            }
-            team {
-                id
-                name
-                key
-            }
-            comments {
-                nodes {
-                    id
-                    body
-                    createdAt
-                    user {
-                        id
-                        name
-                        email
-                    }
-                }
-            }
-        }
-    }
-    """
+#     mutation = """
+#     mutation ReactionCreate($commentId: String!, $emoji: String!) {
+#         reactionCreate(input: { commentId: $commentId, emoji: $emoji }) {
+#             success
+#         }
+#     }
+#     """
 
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(
-                url,
-                headers={
-                    "Authorization": LINEAR_API_KEY,
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "query": query,
-                    "variables": {"issueId": issue_id},
-                },
-            )
-            response.raise_for_status()
-            result = response.json()
+#     async with httpx.AsyncClient() as client:
+#         try:
+#             response = await client.post(
+#                 url,
+#                 headers={
+#                     "Authorization": LINEAR_API_KEY,
+#                     "Content-Type": "application/json",
+#                 },
+#                 json={
+#                     "query": mutation,
+#                     "variables": {"commentId": comment_id, "emoji": emoji},
+#                 },
+#             )
+#             response.raise_for_status()
+#             result = response.json()
+#             return bool(result.get("data", {}).get("reactionCreate", {}).get("success"))
+#         except Exception:  # noqa: BLE001
+#             return False
 
-            return result.get("data", {}).get("issue")
-        except httpx.HTTPError:
-            return None
+
+# async def fetch_linear_issue_details(issue_id: str) -> dict[str, Any] | None:
+#     """Fetch full issue details from Linear API including description and comments.
+
+#     Args:
+#         issue_id: The Linear issue ID
+
+#     Returns:
+#         Full issue data dict, or None if fetch failed
+#     """
+#     if not LINEAR_API_KEY:
+#         return None
+
+#     url = "https://api.linear.app/graphql"
+
+#     query = """
+#     query GetIssue($issueId: String!) {
+#         issue(id: $issueId) {
+#             id
+#             identifier
+#             title
+#             description
+#             url
+#             project {
+#                 id
+#                 name
+#             }
+#             team {
+#                 id
+#                 name
+#                 key
+#             }
+#             comments {
+#                 nodes {
+#                     id
+#                     body
+#                     createdAt
+#                     user {
+#                         id
+#                         name
+#                         email
+#                     }
+#                 }
+#             }
+#         }
+#     }
+#     """
+
+#     async with httpx.AsyncClient() as client:
+#         try:
+#             response = await client.post(
+#                 url,
+#                 headers={
+#                     "Authorization": LINEAR_API_KEY,
+#                     "Content-Type": "application/json",
+#                 },
+#                 json={
+#                     "query": query,
+#                     "variables": {"issueId": issue_id},
+#                 },
+#             )
+#             response.raise_for_status()
+#             result = response.json()
+
+#             return result.get("data", {}).get("issue")
+#         except httpx.HTTPError:
+#             return None
 
 
 def generate_thread_id_from_issue(issue_id: str) -> str:
@@ -583,231 +585,231 @@ async def _ensure_thread_exists_for_metadata(
         return False
 
 
-async def process_linear_issue(  # noqa: PLR0912, PLR0915
-    issue_data: dict[str, Any], repo_config: dict[str, str]
-) -> None:
-    """Process a Linear issue by creating a new LangGraph thread and run.
+# async def process_linear_issue(  # noqa: PLR0912, PLR0915
+#     issue_data: dict[str, Any], repo_config: dict[str, str]
+# ) -> None:
+#     """Process a Linear issue by creating a new LangGraph thread and run.
 
-    Args:
-        issue_data: The Linear issue data from webhook (basic info only).
-        repo_config: The repo configuration with owner and name.
-    """
-    issue_id = issue_data.get("id", "")
-    logger.info(
-        "Processing Linear issue %s for repo %s/%s",
-        issue_id,
-        repo_config.get("owner"),
-        repo_config.get("name"),
-    )
+#     Args:
+#         issue_data: The Linear issue data from webhook (basic info only).
+#         repo_config: The repo configuration with owner and name.
+#     """
+#     issue_id = issue_data.get("id", "")
+#     logger.info(
+#         "Processing Linear issue %s for repo %s/%s",
+#         issue_id,
+#         repo_config.get("owner"),
+#         repo_config.get("name"),
+#     )
 
-    triggering_comment_id = issue_data.get("triggering_comment_id", "")
-    if triggering_comment_id:
-        await react_to_linear_comment(triggering_comment_id, "👀")
+#     triggering_comment_id = issue_data.get("triggering_comment_id", "")
+#     if triggering_comment_id:
+#         await react_to_linear_comment(triggering_comment_id, "👀")
 
-    thread_id = generate_thread_id_from_issue(issue_id)
+#     thread_id = generate_thread_id_from_issue(issue_id)
 
-    full_issue = await fetch_linear_issue_details(issue_id)
-    if not full_issue:
-        full_issue = issue_data
+#     full_issue = await fetch_linear_issue_details(issue_id)
+#     if not full_issue:
+#         full_issue = issue_data
 
-    user_email = None
-    user_name = None
-    comment_author = issue_data.get("comment_author", {})
-    if comment_author:
-        user_email = comment_author.get("email")
-        user_name = comment_author.get("name")
-    if not user_email:
-        creator = full_issue.get("creator", {})
-        if creator:
-            user_email = creator.get("email")
-            user_name = user_name or creator.get("name")
-    if not user_email:
-        assignee = full_issue.get("assignee", {})
-        if assignee:
-            user_email = assignee.get("email")
-            user_name = user_name or assignee.get("name")
+#     user_email = None
+#     user_name = None
+#     comment_author = issue_data.get("comment_author", {})
+#     if comment_author:
+#         user_email = comment_author.get("email")
+#         user_name = comment_author.get("name")
+#     if not user_email:
+#         creator = full_issue.get("creator", {})
+#         if creator:
+#             user_email = creator.get("email")
+#             user_name = user_name or creator.get("name")
+#     if not user_email:
+#         assignee = full_issue.get("assignee", {})
+#         if assignee:
+#             user_email = assignee.get("email")
+#             user_name = user_name or assignee.get("name")
 
-    logger.info("User email for issue %s: %s", issue_id, user_email)
+#     logger.info("User email for issue %s: %s", issue_id, user_email)
 
-    title = full_issue.get("title", "No title")
-    description = full_issue.get("description") or "No description"
-    image_urls: list[str] = []
-    description_image_urls = extract_image_urls(description)
-    if description_image_urls:
-        image_urls.extend(description_image_urls)
-        logger.debug(
-            "Found %d image URL(s) in issue description",
-            len(description_image_urls),
-        )
+#     title = full_issue.get("title", "No title")
+#     description = full_issue.get("description") or "No description"
+#     image_urls: list[str] = []
+#     description_image_urls = extract_image_urls(description)
+#     if description_image_urls:
+#         image_urls.extend(description_image_urls)
+#         logger.debug(
+#             "Found %d image URL(s) in issue description",
+#             len(description_image_urls),
+#         )
 
-    comments = full_issue.get("comments", {}).get("nodes", [])
-    comments_text = ""
-    triggering_comment = issue_data.get("triggering_comment", "")
-    triggering_comment_id = issue_data.get("triggering_comment_id", "")
+#     comments = full_issue.get("comments", {}).get("nodes", [])
+#     comments_text = ""
+#     triggering_comment = issue_data.get("triggering_comment", "")
+#     triggering_comment_id = issue_data.get("triggering_comment_id", "")
 
-    bot_message_prefixes = (
-        "🔐 **GitHub Authentication Required**",
-        "✅ **Pull Request Created**",
-        "✅ **Pull Request Updated**",
-        "**Pull Request Created**",
-        "**Pull Request Updated**",
-        "🤖 **Agent Response**",
-        "❌ **Agent Error**",
-    )
+#     bot_message_prefixes = (
+#         "🔐 **GitHub Authentication Required**",
+#         "✅ **Pull Request Created**",
+#         "✅ **Pull Request Updated**",
+#         "**Pull Request Created**",
+#         "**Pull Request Updated**",
+#         "🤖 **Agent Response**",
+#         "❌ **Agent Error**",
+#     )
 
-    comment_ids: set[str] = set()
-    comment_id_to_index: dict[str, int] = {}
-    if comments:
-        for i, comment in enumerate(comments):
-            comment_id = comment.get("id", "")
-            if comment_id:
-                comment_ids.add(comment_id)
-                comment_id_to_index[comment_id] = i
+#     comment_ids: set[str] = set()
+#     comment_id_to_index: dict[str, int] = {}
+#     if comments:
+#         for i, comment in enumerate(comments):
+#             comment_id = comment.get("id", "")
+#             if comment_id:
+#                 comment_ids.add(comment_id)
+#                 comment_id_to_index[comment_id] = i
 
-        relevant_comments = []
-        trigger_index = None
-        if triggering_comment_id:
-            trigger_index = comment_id_to_index.get(triggering_comment_id)
-        if trigger_index is not None:
-            relevant_comments = comments[trigger_index:]
-            logger.debug(
-                "Using triggering comment index %d to build relevant comments",
-                trigger_index,
-            )
-        else:
-            relevant_comments = get_recent_comments(comments, bot_message_prefixes)
+#         relevant_comments = []
+#         trigger_index = None
+#         if triggering_comment_id:
+#             trigger_index = comment_id_to_index.get(triggering_comment_id)
+#         if trigger_index is not None:
+#             relevant_comments = comments[trigger_index:]
+#             logger.debug(
+#                 "Using triggering comment index %d to build relevant comments",
+#                 trigger_index,
+#             )
+#         else:
+#             relevant_comments = get_recent_comments(comments, bot_message_prefixes)
 
-        if relevant_comments:
-            comments_text = "\n\n## Comments:\n"
-            for comment in relevant_comments:
-                user = comment.get("user") or {}
-                author = user.get("name", "User")
-                body = comment.get("body", "")
-                body_image_urls = extract_image_urls(body)
-                if body_image_urls:
-                    image_urls.extend(body_image_urls)
-                    logger.debug(
-                        "Found %d image URL(s) in comment by %s",
-                        len(body_image_urls),
-                        author,
-                    )
-                if any(body.startswith(prefix) for prefix in bot_message_prefixes):
-                    continue
-                comments_text += f"\n**{author}:** {body}\n"
+#         if relevant_comments:
+#             comments_text = "\n\n## Comments:\n"
+#             for comment in relevant_comments:
+#                 user = comment.get("user") or {}
+#                 author = user.get("name", "User")
+#                 body = comment.get("body", "")
+#                 body_image_urls = extract_image_urls(body)
+#                 if body_image_urls:
+#                     image_urls.extend(body_image_urls)
+#                     logger.debug(
+#                         "Found %d image URL(s) in comment by %s",
+#                         len(body_image_urls),
+#                         author,
+#                     )
+#                 if any(body.startswith(prefix) for prefix in bot_message_prefixes):
+#                     continue
+#                 comments_text += f"\n**{author}:** {body}\n"
 
-    if triggering_comment and triggering_comment_id not in comment_ids:
-        if not comments_text:
-            comments_text = "\n\n## Comments:\n"
-        trigger_author = comment_author.get("name", "Unknown")
-        trigger_body = triggering_comment
-        trigger_image_urls = extract_image_urls(trigger_body)
-        if trigger_image_urls:
-            image_urls.extend(trigger_image_urls)
-            logger.debug(
-                "Found %d image URL(s) in triggering comment by %s",
-                len(trigger_image_urls),
-                trigger_author,
-            )
-        comments_text += f"\n**{trigger_author}:** {trigger_body}\n"
-        logger.debug(
-            "Appended triggering comment %s not present in issue comments list",
-            triggering_comment_id or "<missing-id>",
-        )
+#     if triggering_comment and triggering_comment_id not in comment_ids:
+#         if not comments_text:
+#             comments_text = "\n\n## Comments:\n"
+#         trigger_author = comment_author.get("name", "Unknown")
+#         trigger_body = triggering_comment
+#         trigger_image_urls = extract_image_urls(trigger_body)
+#         if trigger_image_urls:
+#             image_urls.extend(trigger_image_urls)
+#             logger.debug(
+#                 "Found %d image URL(s) in triggering comment by %s",
+#                 len(trigger_image_urls),
+#                 trigger_author,
+#             )
+#         comments_text += f"\n**{trigger_author}:** {trigger_body}\n"
+#         logger.debug(
+#             "Appended triggering comment %s not present in issue comments list",
+#             triggering_comment_id or "<missing-id>",
+#         )
 
-    identifier = full_issue.get("identifier", "") or issue_data.get("identifier", "")
+#     identifier = full_issue.get("identifier", "") or issue_data.get("identifier", "")
 
-    triggered_by_line = f"## Triggered by: {user_name}\n\n" if user_name else ""
-    tag_instruction = (
-        f"When calling linear_comment, tag @{user_name} if you are asking them a question, need their input, or are notifying them of something important (e.g. a completed PR). For simple answers, tagging is not required."
-        if user_name
-        else ""
-    )
-    prompt = (
-        f"Please work on the following issue:\n\n"
-        f"## Title: {title}\n\n"
-        f"{triggered_by_line}"
-        f"## Linear Ticket: {identifier} - Ticket ID: {issue_id}\n\n"
-        f"## Description:\n{description}\n"
-        f"{comments_text}\n\n"
-        f"Please analyze this issue and implement the necessary changes. "
-        f"When you're done, commit and push your changes. {tag_instruction}"
-    )
-    content_blocks: list[dict[str, Any]] = [create_text_block(prompt)]
-    if image_urls:
-        image_urls = dedupe_urls(image_urls)
-        logger.info("Preparing %d image(s) for multimodal content", len(image_urls))
-        logger.debug("Image URLs: %s", image_urls)
+#     triggered_by_line = f"## Triggered by: {user_name}\n\n" if user_name else ""
+#     tag_instruction = (
+#         f"When calling linear_comment, tag @{user_name} if you are asking them a question, need their input, or are notifying them of something important (e.g. a completed PR). For simple answers, tagging is not required."
+#         if user_name
+#         else ""
+#     )
+#     prompt = (
+#         f"Please work on the following issue:\n\n"
+#         f"## Title: {title}\n\n"
+#         f"{triggered_by_line}"
+#         f"## Linear Ticket: {identifier} - Ticket ID: {issue_id}\n\n"
+#         f"## Description:\n{description}\n"
+#         f"{comments_text}\n\n"
+#         f"Please analyze this issue and implement the necessary changes. "
+#         f"When you're done, commit and push your changes. {tag_instruction}"
+#     )
+#     content_blocks: list[dict[str, Any]] = [create_text_block(prompt)]
+#     if image_urls:
+#         image_urls = dedupe_urls(image_urls)
+#         logger.info("Preparing %d image(s) for multimodal content", len(image_urls))
+#         logger.debug("Image URLs: %s", image_urls)
 
-        async with httpx.AsyncClient() as client:
-            for image_url in image_urls:
-                image_block = await fetch_image_block(image_url, client)
-                if image_block:
-                    content_blocks.append(image_block)
-        logger.info("Built %d content block(s) for prompt", len(content_blocks))
+#         async with httpx.AsyncClient() as client:
+#             for image_url in image_urls:
+#                 image_block = await fetch_image_block(image_url, client)
+#                 if image_block:
+#                     content_blocks.append(image_block)
+#         logger.info("Built %d content block(s) for prompt", len(content_blocks))
 
-    linear_project_id = ""
-    linear_issue_number = ""
-    if identifier and "-" in identifier:
-        parts = identifier.split("-", 1)
-        linear_project_id = parts[0]
-        linear_issue_number = parts[1]
+#     linear_project_id = ""
+#     linear_issue_number = ""
+#     if identifier and "-" in identifier:
+#         parts = identifier.split("-", 1)
+#         linear_project_id = parts[0]
+#         linear_issue_number = parts[1]
 
-    configurable: dict[str, Any] = {
-        "repo": repo_config,
-        "linear_issue": {
-            "id": issue_id,
-            "title": title,
-            "url": full_issue.get("url", "") or issue_data.get("url", ""),
-            "identifier": identifier,
-            "linear_project_id": linear_project_id,
-            "linear_issue_number": linear_issue_number,
-            "triggering_user_name": user_name or "",
-        },
-        "user_email": user_email,
-        "source": "linear",
-    }
+#     configurable: dict[str, Any] = {
+#         "repo": repo_config,
+#         "linear_issue": {
+#             "id": issue_id,
+#             "title": title,
+#             "url": full_issue.get("url", "") or issue_data.get("url", ""),
+#             "identifier": identifier,
+#             "linear_project_id": linear_project_id,
+#             "linear_issue_number": linear_issue_number,
+#             "triggering_user_name": user_name or "",
+#         },
+#         "user_email": user_email,
+#         "source": "linear",
+#     }
 
-    logger.info("Checking if thread %s is active before creating run", thread_id)
-    thread_active = await is_thread_active(thread_id)
-    logger.info("Thread %s active status: %s", thread_id, thread_active)
+#     logger.info("Checking if thread %s is active before creating run", thread_id)
+#     thread_active = await is_thread_active(thread_id)
+#     logger.info("Thread %s active status: %s", thread_id, thread_active)
 
-    if thread_active:
-        logger.info(
-            "Thread %s is active (busy), will queue message instead of creating run",
-            thread_id,
-        )
+#     if thread_active:
+#         logger.info(
+#             "Thread %s is active (busy), will queue message instead of creating run",
+#             thread_id,
+#         )
 
-        queued_payload = {"text": prompt, "image_urls": image_urls}
-        queued = await queue_message_for_thread(
-            thread_id=thread_id,
-            message_content=queued_payload,
-        )
+#         queued_payload = {"text": prompt, "image_urls": image_urls}
+#         queued = await queue_message_for_thread(
+#             thread_id=thread_id,
+#             message_content=queued_payload,
+#         )
 
-        if queued:
-            logger.info("Message queued for thread %s, will be processed by middleware", thread_id)
-            langgraph_client = get_client(url=LANGGRAPH_URL)
-            runs = await langgraph_client.runs.list(thread_id, limit=1)
-            # if runs:
-            #     await post_linear_trace_comment(issue_id, thread_id, triggering_comment_id)
-        else:
-            logger.error("Failed to queue message for thread %s", thread_id)
-    else:
-        logger.info("Creating LangGraph run for thread %s", thread_id)
-        langgraph_client = get_client(url=LANGGRAPH_URL)
-        run_metadata = {
-            **_AGENT_VERSION_METADATA,
-            "langfuse_session_id": thread_id,
-            "langfuse_user_id": configurable.get("user_email") or configurable.get("github_login", "unknown"),
-        }
-        await langgraph_client.runs.create(
-            thread_id,
-            "agent",
-            input={"messages": [{"role": "user", "content": content_blocks}]},
-            config={"configurable": configurable, "metadata": run_metadata},
-            if_not_exists="create",
-        )
-        logger.info("LangGraph run created successfully for thread %s", thread_id)
-        # await post_linear_trace_comment(issue_id, thread_id, triggering_comment_id)
+#         if queued:
+#             logger.info("Message queued for thread %s, will be processed by middleware", thread_id)
+#             langgraph_client = get_client(url=LANGGRAPH_URL)
+#             runs = await langgraph_client.runs.list(thread_id, limit=1)
+#             # if runs:
+#             #     await post_linear_trace_comment(issue_id, thread_id, triggering_comment_id)
+#         else:
+#             logger.error("Failed to queue message for thread %s", thread_id)
+#     else:
+#         logger.info("Creating LangGraph run for thread %s", thread_id)
+#         langgraph_client = get_client(url=LANGGRAPH_URL)
+#         run_metadata = {
+#             **_AGENT_VERSION_METADATA,
+#             "langfuse_session_id": thread_id,
+#             "langfuse_user_id": configurable.get("user_email") or configurable.get("github_login", "unknown"),
+#         }
+#         await langgraph_client.runs.create(
+#             thread_id,
+#             "agent",
+#             input={"messages": [{"role": "user", "content": content_blocks}]},
+#             config={"configurable": configurable, "metadata": run_metadata},
+#             if_not_exists="create",
+#         )
+#         logger.info("LangGraph run created successfully for thread %s", thread_id)
+#         await post_linear_trace_comment(issue_id, thread_id, triggering_comment_id)
 
 
 async def process_slack_mention(event_data: dict[str, Any], repo_config: dict[str, str]) -> None:
@@ -1028,15 +1030,15 @@ async def process_slack_pr_review_request(
     )
 
 
-def verify_linear_signature(body: bytes, signature: str, secret: str) -> bool:
-    """Verify the Linear webhook signature."""
-    if not secret:
-        logger.warning("LINEAR_WEBHOOK_SECRET is not configured — rejecting webhook request")
-        return False
+# def verify_linear_signature(body: bytes, signature: str, secret: str) -> bool:
+#     """Verify the Linear webhook signature."""
+#     if not secret:
+#         logger.warning("LINEAR_WEBHOOK_SECRET is not configured — rejecting webhook request")
+#         return False
 
-    expected = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+#     expected = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
 
-    return hmac.compare_digest(expected, signature)
+#     return hmac.compare_digest(expected, signature)
 
 
 def verify_jira_signature(body: bytes, signature: str, secret: str) -> bool:
@@ -1055,156 +1057,156 @@ def verify_jira_signature(body: bytes, signature: str, secret: str) -> bool:
     return hmac.compare_digest(expected, signature)
 
 
-@app.post("/webhooks/linear")
-async def linear_webhook(  # noqa: PLR0911, PLR0912, PLR0915
-    request: Request, background_tasks: BackgroundTasks
-) -> dict[str, str]:
-    """Handle Linear webhooks.
+# @app.post("/webhooks/linear")
+# async def linear_webhook(  # noqa: PLR0911, PLR0912, PLR0915
+#     request: Request, background_tasks: BackgroundTasks
+# ) -> dict[str, str]:
+#     """Handle Linear webhooks.
 
-    Triggers a new LangGraph run when an issue gets the 'open-swe' label added.
-    """
-    logger.info("Received Linear webhook")
-    body = await request.body()
+#     Triggers a new LangGraph run when an issue gets the 'open-swe' label added.
+#     """
+#     logger.info("Received Linear webhook")
+#     body = await request.body()
 
-    signature = request.headers.get("Linear-Signature", "")
-    if not verify_linear_signature(body, signature, LINEAR_WEBHOOK_SECRET):
-        logger.warning("Invalid webhook signature")
-        raise HTTPException(status_code=401, detail="Invalid signature")
+#     signature = request.headers.get("Linear-Signature", "")
+#     if not verify_linear_signature(body, signature, LINEAR_WEBHOOK_SECRET):
+#         logger.warning("Invalid webhook signature")
+#         raise HTTPException(status_code=401, detail="Invalid signature")
 
-    try:
-        payload = json.loads(body)
-    except json.JSONDecodeError:
-        logger.exception("Failed to parse webhook JSON")
-        return {"status": "error", "message": "Invalid JSON"}
+#     try:
+#         payload = json.loads(body)
+#     except json.JSONDecodeError:
+#         logger.exception("Failed to parse webhook JSON")
+#         return {"status": "error", "message": "Invalid JSON"}
 
-    if payload.get("type") != "Comment":
-        logger.debug("Ignoring webhook: not a Comment event")
-        return {"status": "ignored", "reason": "Not a Comment event"}
+#     if payload.get("type") != "Comment":
+#         logger.debug("Ignoring webhook: not a Comment event")
+#         return {"status": "ignored", "reason": "Not a Comment event"}
 
-    action = payload.get("action")
-    if action != "create":
-        logger.debug("Ignoring webhook: action is %s, not create", action)
-        return {
-            "status": "ignored",
-            "reason": f"Comment action is '{action}', only processing 'create'",
-        }
+#     action = payload.get("action")
+#     if action != "create":
+#         logger.debug("Ignoring webhook: action is %s, not create", action)
+#         return {
+#             "status": "ignored",
+#             "reason": f"Comment action is '{action}', only processing 'create'",
+#         }
 
-    data = payload.get("data", {})
+#     data = payload.get("data", {})
 
-    if data.get("botActor"):
-        logger.debug("Ignoring webhook: comment is from a bot")
-        return {"status": "ignored", "reason": "Comment is from a bot"}
+#     if data.get("botActor"):
+#         logger.debug("Ignoring webhook: comment is from a bot")
+#         return {"status": "ignored", "reason": "Comment is from a bot"}
 
-    comment_body = data.get("body", "")
-    bot_message_prefixes = [
-        "🔐 **GitHub Authentication Required**",
-        "✅ **Pull Request Created**",
-        "✅ **Pull Request Updated**",
-        "**Pull Request Created**",
-        "**Pull Request Updated**",
-        "🤖 **Agent Response**",
-        "❌ **Agent Error**",
-    ]
-    for prefix in bot_message_prefixes:
-        if comment_body.startswith(prefix):
-            logger.debug("Ignoring webhook: comment is our own bot message")
-            return {"status": "ignored", "reason": "Comment is our own bot message"}
-    if "@openswe" not in comment_body.lower():
-        logger.debug("Ignoring webhook: comment doesn't mention @openswe")
-        return {"status": "ignored", "reason": "Comment doesn't mention @openswe"}
+#     comment_body = data.get("body", "")
+#     bot_message_prefixes = [
+#         "🔐 **GitHub Authentication Required**",
+#         "✅ **Pull Request Created**",
+#         "✅ **Pull Request Updated**",
+#         "**Pull Request Created**",
+#         "**Pull Request Updated**",
+#         "🤖 **Agent Response**",
+#         "❌ **Agent Error**",
+#     ]
+#     for prefix in bot_message_prefixes:
+#         if comment_body.startswith(prefix):
+#             logger.debug("Ignoring webhook: comment is our own bot message")
+#             return {"status": "ignored", "reason": "Comment is our own bot message"}
+#     if "@openswe" not in comment_body.lower():
+#         logger.debug("Ignoring webhook: comment doesn't mention @openswe")
+#         return {"status": "ignored", "reason": "Comment doesn't mention @openswe"}
 
-    issue = data.get("issue", {})
-    if not issue:
-        logger.debug("Ignoring webhook: no issue data in comment")
-        return {"status": "ignored", "reason": "No issue data in comment"}
+#     issue = data.get("issue", {})
+#     if not issue:
+#         logger.debug("Ignoring webhook: no issue data in comment")
+#         return {"status": "ignored", "reason": "No issue data in comment"}
 
-    # Fetch full issue details to get project info (webhook doesn't include it)
-    issue_id = issue.get("id", "")
-    full_issue = await fetch_linear_issue_details(issue_id)
-    if not full_issue:
-        logger.warning("Failed to fetch full issue details, using webhook data")
-        full_issue = issue
+#     # Fetch full issue details to get project info (webhook doesn't include it)
+#     issue_id = issue.get("id", "")
+#     full_issue = await fetch_linear_issue_details(issue_id)
+#     if not full_issue:
+#         logger.warning("Failed to fetch full issue details, using webhook data")
+#         full_issue = issue
 
-    repo_config = extract_repo_from_text(comment_body, default_owner=DEFAULT_REPO_OWNER)
+#     repo_config = extract_repo_from_text(comment_body, default_owner=DEFAULT_REPO_OWNER)
 
-    if repo_config:
-        logger.debug(
-            "Using repo from comment body: %s/%s",
-            repo_config["owner"],
-            repo_config["name"],
-        )
-    else:
-        comment_user_email = (data.get("user") or {}).get("email")
-        try:
-            profile_repo = await get_profile_default_repo(
-                resolve_login_from_email(comment_user_email)
-            )
-        except Exception:  # noqa: BLE001
-            logger.exception("Failed to apply dashboard default_repo for Linear user")
-            profile_repo = None
-        if profile_repo:
-            logger.info(
-                "Applying dashboard default_repo for Linear user %s: %s/%s",
-                comment_user_email,
-                profile_repo["owner"],
-                profile_repo["name"],
-            )
-            repo_config = profile_repo
+#     if repo_config:
+#         logger.debug(
+#             "Using repo from comment body: %s/%s",
+#             repo_config["owner"],
+#             repo_config["name"],
+#         )
+#     else:
+#         comment_user_email = (data.get("user") or {}).get("email")
+#         try:
+#             profile_repo = await get_profile_default_repo(
+#                 resolve_login_from_email(comment_user_email)
+#             )
+#         except Exception:  # noqa: BLE001
+#             logger.exception("Failed to apply dashboard default_repo for Linear user")
+#             profile_repo = None
+#         if profile_repo:
+#             logger.info(
+#                 "Applying dashboard default_repo for Linear user %s: %s/%s",
+#                 comment_user_email,
+#                 profile_repo["owner"],
+#                 profile_repo["name"],
+#             )
+#             repo_config = profile_repo
 
-    if not repo_config:
-        team = full_issue.get("team", {})
-        team_name = team.get("name", "") if team else ""
-        project = full_issue.get("project")
-        project_name = project.get("name", "") if project else ""
+#     if not repo_config:
+#         team = full_issue.get("team", {})
+#         team_name = team.get("name", "") if team else ""
+#         project = full_issue.get("project")
+#         project_name = project.get("name", "") if project else ""
 
-        team_identifier = team_name.strip() if team_name else ""
-        project_key = project_name.strip() if project_name else ""
+#         team_identifier = team_name.strip() if team_name else ""
+#         project_key = project_name.strip() if project_name else ""
 
-        repo_config = get_repo_config_from_team_mapping(team_identifier, project_key)
+#         repo_config = get_repo_config_from_team_mapping(team_identifier, project_key)
 
-        logger.debug(
-            "Team/project lookup result",
-            extra={
-                "team_name": team_identifier,
-                "project_name": project_key,
-                "repo_config": repo_config,
-            },
-        )
+#         logger.debug(
+#             "Team/project lookup result",
+#             extra={
+#                 "team_name": team_identifier,
+#                 "project_name": project_key,
+#                 "repo_config": repo_config,
+#             },
+#         )
 
-    if not _is_repo_allowed(repo_config):
-        logger.warning(
-            "Rejecting Linear webhook: repo '%s/%s' not in allowlist",
-            repo_config.get("owner"),
-            repo_config.get("name"),
-        )
-        return {"status": "ignored", "reason": "Repository not in allowlist"}
+#     if not _is_repo_allowed(repo_config):
+#         logger.warning(
+#             "Rejecting Linear webhook: repo '%s/%s' not in allowlist",
+#             repo_config.get("owner"),
+#             repo_config.get("name"),
+#         )
+#         return {"status": "ignored", "reason": "Repository not in allowlist"}
 
-    repo_owner = repo_config["owner"]
-    repo_name = repo_config["name"]
+#     repo_owner = repo_config["owner"]
+#     repo_name = repo_config["name"]
 
-    issue["triggering_comment"] = comment_body
-    issue["triggering_comment_id"] = data.get("id", "")
-    comment_user = data.get("user", {})
-    if comment_user:
-        issue["comment_author"] = comment_user
+#     issue["triggering_comment"] = comment_body
+#     issue["triggering_comment_id"] = data.get("id", "")
+#     comment_user = data.get("user", {})
+#     if comment_user:
+#         issue["comment_author"] = comment_user
 
-    logger.info(
-        "Accepted webhook for issue '%s' (%s), scheduling background task",
-        issue.get("title"),
-        issue.get("id"),
-    )
-    background_tasks.add_task(process_linear_issue, issue, repo_config)
+#     logger.info(
+#         "Accepted webhook for issue '%s' (%s), scheduling background task",
+#         issue.get("title"),
+#         issue.get("id"),
+#     )
+#     background_tasks.add_task(process_linear_issue, issue, repo_config)
 
-    return {
-        "status": "accepted",
-        "message": f"Processing issue '{issue.get('title')}' for repo {repo_owner}/{repo_name}",
-    }
+#     return {
+#         "status": "accepted",
+#         "message": f"Processing issue '{issue.get('title')}' for repo {repo_owner}/{repo_name}",
+#     }
 
 
-@app.get("/webhooks/linear")
-async def linear_webhook_verify() -> dict[str, str]:
-    """Verify endpoint for Linear webhook setup."""
-    return {"status": "ok", "message": "Linear webhook endpoint is active"}
+# @app.get("/webhooks/linear")
+# async def linear_webhook_verify() -> dict[str, str]:
+#     """Verify endpoint for Linear webhook setup."""
+#     return {"status": "ok", "message": "Linear webhook endpoint is active"}
 
 
 @app.post("/webhooks/slack")
@@ -2814,22 +2816,6 @@ async def process_github_pr_comment(payload: dict[str, Any], event_type: str) ->
     ) = await extract_pr_context(payload, event_type)
     github_user_id = payload.get("sender", {}).get("id")
 
-    run_metadata = {
-        **_AGENT_VERSION_METADATA,
-        "langfuse_session_id": thread_id,
-        "langfuse_user_id": github_login or "unknown",
-    }
-    config={
-            "configurable": {
-                "source": "github",
-                "github_login": github_login,
-                "github_user_id": github_user_id,
-                "repo": repo_config,
-                "pr_number": pr_number,
-            },
-            "metadata": run_metadata,
-        }
-
     logger.info(
         "Processing GitHub PR comment: event=%s, pr=%s, branch=%s",
         event_type,
@@ -2863,6 +2849,21 @@ async def process_github_pr_comment(payload: dict[str, Any], event_type: str) ->
             else:
                 logger.warning("Failed to persist branch_name metadata for thread %s", thread_id)
 
+        run_metadata = {
+        **_AGENT_VERSION_METADATA,
+        "langfuse_session_id": thread_id,  # noqa: F821
+        "langfuse_user_id": github_login or "unknown",
+    }
+    config={  # noqa: F821
+            "configurable": {
+                "source": "github",
+                "github_login": github_login,
+                "github_user_id": github_user_id,
+                "repo": repo_config,
+                "pr_number": pr_number,
+            },
+            "metadata": run_metadata,
+        }
     comment = payload.get("comment") or payload.get("review", {})
     is_review_request, _pr_url_override = parse_github_review_command(comment.get("body") or "")
     email = GITHUB_USER_EMAIL_MAP.get(github_login, "")
@@ -3161,14 +3162,6 @@ async def process_github_issue(payload: dict[str, Any], event_type: str) -> None
         },
     }
 
-    run_metadata = {
-        **_AGENT_VERSION_METADATA,
-        "langfuse_session_id": thread_id,
-        "langfuse_user_id": configurable.get("github_login", "unknown"),
-    }
-
-    config={"configurable": configurable, "metadata": run_metadata}
-
     if not issue_id or not issue_number:
         logger.warning("Missing GitHub issue id/number, skipping")
         return
@@ -3179,6 +3172,15 @@ async def process_github_issue(payload: dict[str, Any], event_type: str) -> None
         return
 
     thread_id = generate_thread_id_from_github_issue(issue_id)
+
+    run_metadata = {
+        **_AGENT_VERSION_METADATA,
+        "langfuse_session_id": thread_id,
+        "langfuse_user_id": configurable.get("github_login", "unknown"),
+    }
+
+    config = {"configurable": configurable, "metadata": run_metadata}
+    
     existing_thread = await _thread_exists(thread_id)
     github_token = await _get_or_resolve_thread_github_token(thread_id, config)
     app_token = await get_github_app_installation_token()

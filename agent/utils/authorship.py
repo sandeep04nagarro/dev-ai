@@ -95,11 +95,11 @@ def _identity_from_config(config: dict[str, Any]) -> CollaboratorIdentity | None
             )
 
     slack_thread = configurable.get("slack_thread", {})
-    linear_issue = configurable.get("linear_issue", {})
+    # linear_issue = configurable.get("linear_issue", {})
 
     display_name = (
         _normalize_text(slack_thread.get("triggering_user_name"))
-        or _normalize_text(linear_issue.get("triggering_user_name"))
+        # or _normalize_text(linear_issue.get("triggering_user_name"))
         or _normalize_text(configurable.get("user_email")).split("@", 1)[0]
     )
     commit_email = _normalize_text(configurable.get("user_email")) or _normalize_text(

@@ -23,7 +23,7 @@ def check_if_model_messaged_user(messages: list[AnyMessage]) -> bool:
     for msg in messages:
         if msg.type == "tool" and msg.name in [
             "slack_thread_reply",
-            "linear_comment",
+            # "linear_comment",
         ]:
             return True
     return False

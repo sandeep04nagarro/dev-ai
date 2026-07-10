@@ -2,13 +2,13 @@ from .add_finding import add_finding
 from .fetch_url import fetch_url
 from .http_request import http_request
 from .jira_comment import jira_comment
-from .linear_comment import linear_comment
-from .linear_create_issue import linear_create_issue
-from .linear_delete_issue import linear_delete_issue
-from .linear_get_issue import linear_get_issue
-from .linear_get_issue_comments import linear_get_issue_comments
-from .linear_list_teams import linear_list_teams
-from .linear_update_issue import linear_update_issue
+# from .linear_comment import linear_comment
+# from .linear_create_issue import linear_create_issue
+# from .linear_delete_issue import linear_delete_issue
+# from .linear_get_issue import linear_get_issue
+# from .linear_get_issue_comments import linear_get_issue_comments
+# from .linear_list_teams import linear_list_teams
+# from .linear_update_issue import linear_update_issue
 from .list_findings import list_findings
 from .publish_review import publish_review
 from .reply_to_finding_thread import reply_to_finding_thread
@@ -24,13 +24,13 @@ __all__ = [
     "fetch_url",
     "http_request",
     "jira_comment",
-    "linear_comment",
-    "linear_create_issue",
-    "linear_delete_issue",
-    "linear_get_issue",
-    "linear_get_issue_comments",
-    "linear_list_teams",
-    "linear_update_issue",
+    # "linear_comment",
+    # "linear_create_issue",
+    # "linear_delete_issue",
+    # "linear_get_issue",
+    # "linear_get_issue_comments",
+    # "linear_list_teams",
+    # "linear_update_issue",
     "list_findings",
     "publish_review",
     "request_pr_review",

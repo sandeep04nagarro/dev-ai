@@ -20,10 +20,10 @@ from ..utils.multimodal import fetch_image_block
 logger = logging.getLogger(__name__)
 
 
-class LinearNotifyState(AgentState):
-    """Extended agent state for tracking Linear notifications."""
+# class LinearNotifyState(AgentState):
+#     """Extended agent state for tracking Linear notifications."""
 
-    linear_messages_sent_count: int
+#     linear_messages_sent_count: int
 
 
 async def _build_blocks_from_payload(
@@ -45,9 +45,11 @@ async def _build_blocks_from_payload(
     return blocks
 
 
-@before_model(state_schema=LinearNotifyState)
+# @before_model(state_schema=LinearNotifyState)
+@before_model(state_schema=AgentState)
 async def check_message_queue_before_model(  # noqa: PLR0911
-    state: LinearNotifyState,  # noqa: ARG001
+    # state: LinearNotifyState,  # noqa: ARG001
+    state: AgentState,  # noqa: ARG001
     runtime: Runtime,  # noqa: ARG001
 ) -> dict[str, Any] | None:
     """Middleware that checks for queued messages before each model call.

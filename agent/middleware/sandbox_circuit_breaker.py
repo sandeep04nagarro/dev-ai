@@ -16,7 +16,7 @@ from langgraph.runtime import Runtime
 from ..utils.github_app import get_github_app_installation_token
 from ..utils.github_comments import post_github_comment
 from ..utils.github_token import get_github_token
-from ..utils.linear import comment_on_linear_issue
+# from ..utils.linear import comment_on_linear_issue
 from ..utils.slack import post_slack_thread_reply
 
 logger = logging.getLogger(__name__)
@@ -115,12 +115,12 @@ def _get_slack_target(configurable: Mapping[str, Any]) -> tuple[str, str] | None
     return channel_id, thread_ts
 
 
-def _get_linear_issue_id(configurable: Mapping[str, Any]) -> str | None:
-    linear_issue = configurable.get("linear_issue")
-    if not isinstance(linear_issue, Mapping):
-        return None
-    issue_id = linear_issue.get("id")
-    return issue_id if isinstance(issue_id, str) and issue_id else None
+# def _get_linear_issue_id(configurable: Mapping[str, Any]) -> str | None:
+#     linear_issue = configurable.get("linear_issue")
+#     if not isinstance(linear_issue, Mapping):
+#         return None
+#     issue_id = linear_issue.get("id")
+#     return issue_id if isinstance(issue_id, str) and issue_id else None
 
 
 def _coerce_issue_number(value: object) -> int | None:
@@ -178,11 +178,11 @@ async def _post_unrecoverable_notification(config: Mapping[str, Any]) -> None:
         logger.info("Sent sandbox circuit breaker notification to Slack thread %s", thread_ts)
         return
 
-    linear_issue_id = _get_linear_issue_id(configurable)
-    if linear_issue_id is not None:
-        await comment_on_linear_issue(linear_issue_id, SANDBOX_UNRECOVERABLE_MESSAGE)
-        logger.info("Sent sandbox circuit breaker notification to Linear issue %s", linear_issue_id)
-        return
+    # linear_issue_id = _get_linear_issue_id(configurable)
+    # if linear_issue_id is not None:
+    #     await comment_on_linear_issue(linear_issue_id, SANDBOX_UNRECOVERABLE_MESSAGE)
+    #     logger.info("Sent sandbox circuit breaker notification to Linear issue %s", linear_issue_id)
+    #     return
 
     github_target = _get_github_target(configurable)
     if github_target is not None:
