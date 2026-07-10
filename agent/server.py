@@ -73,6 +73,7 @@ from .utils.model import (
 )
 from .utils.sandbox import create_sandbox
 from .utils.sandbox_paths import aresolve_sandbox_work_dir
+from .utils.token_profiler import PhaseTokenProfilerCallback
 from .utils.tracing import get_langfuse_handler
 from .utils.tracing_diagnostics import _AttrsStore
 
@@ -412,7 +413,7 @@ async def get_agent(config: RunnableConfig) -> Pregel:
         profile = await load_profile(profile_login)
         if profile:
             overridden_model, overridden_effort = normalize_profile_overrides(profile)
-            if overridden_model:
+            if overridden_model and not env_model_id:
                 logger.info(
                     "Applying dashboard profile override for %s: model=%s effort=%s",
                     profile_login,
@@ -426,7 +427,7 @@ async def get_agent(config: RunnableConfig) -> Pregel:
             overridden_subagent_model, overridden_subagent_effort = (
                 normalize_profile_subagent_overrides(profile)
             )
-            if overridden_subagent_model:
+            if overridden_subagent_model and not env_model_id:
                 logger.info(
                     "Applying dashboard profile subagent override for %s: model=%s effort=%s",
                     profile_login,
@@ -440,7 +441,8 @@ async def get_agent(config: RunnableConfig) -> Pregel:
     per_thread_model = configurable.get("agent_model_id")
     per_thread_effort = configurable.get("agent_effort")
     if (
-        isinstance(per_thread_model, str)
+        not env_model_id
+        and isinstance(per_thread_model, str)
         and per_thread_model in SUPPORTED_MODEL_IDS
         and isinstance(per_thread_effort, str)
         and model_supports_effort(per_thread_model, per_thread_effort)
@@ -497,6 +499,32 @@ async def get_agent(config: RunnableConfig) -> Pregel:
             config["callbacks"] = [langfuse_handler]
         elif isinstance(callbacks, list):
             callbacks.append(langfuse_handler)
+
+    # ------------------------------------------------------------------
+    # Phase-based token profiling callback
+    # ------------------------------------------------------------------
+    # Resolve the issue key from Jira or Linear configurable so the
+    # PhaseTokenLedger can be keyed correctly.  We attempt both sources.
+    _profiling_issue_key = (
+        configurable.get("jira_issue", {}).get("key")
+        or configurable.get("linear_issue", {}).get("linear_issue_number")
+        or thread_id
+    )
+    _phase_callback = PhaseTokenProfilerCallback(
+        issue_key=str(_profiling_issue_key),
+        thread_id=str(thread_id),
+        is_reviewer=False,
+    )
+    _existing_callbacks = config.get("callbacks")
+    if _existing_callbacks is None:
+        config["callbacks"] = [_phase_callback]
+    elif isinstance(_existing_callbacks, list):
+        _existing_callbacks.append(_phase_callback)
+    logger.info(
+        "PhaseTokenProfilerCallback injected for issue=%s thread=%s",
+        _profiling_issue_key,
+        thread_id,
+    )
 
     metadata = config.get("metadata", {}) or {}
     _AttrsStore.set(

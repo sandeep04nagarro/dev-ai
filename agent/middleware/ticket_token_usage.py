@@ -3,7 +3,19 @@
 Tracks prompt / completion / total token counts per agent run. When the
 run finishes the middleware looks up the associated Jira issue (via
 thread metadata) and either creates a new comment or updates an
-existing one so the ticket always reflects the latest usage.
+existing one so the ticket always reflects the latest cumulative usage.
+
+Phase-aware logging
+-------------------
+This middleware also reads the ``PhaseTokenLedger`` for the current issue key
+and:
+
+1. Writes a full phase-breakdown JSON-Lines entry to ``TOKEN_PROFILING_LOG_FILE``
+   (or the file resolved by ``token_profiler.py``) so engineers can inspect
+   per-phase consumption without touching Jira.
+
+2. Posts **only the grand-total line** to the Jira comment — no phase table
+   appears in Jira.
 """
 
 from __future__ import annotations
@@ -21,6 +33,7 @@ from langgraph_sdk import get_client
 
 from agent.utils.config import TOKEN_USAGE_LOG_FILE
 from agent.utils.jira import post_jira_comment, update_jira_comment
+from agent.utils.token_profiler import PhaseTokenLedger
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +61,16 @@ class TicketTokenUsageMiddleware(AgentMiddleware):
     ``jira_token_usage`` and the comment id in
     ``jira_token_usage_comment_id`` so subsequent runs update the same
     comment instead of creating duplicates.
+
+    Phase-aware behaviour
+    ----------------------
+    At run end (``aafter_agent``) this middleware:
+
+    * Reads the ``PhaseTokenLedger`` for the current issue to obtain the
+      phase breakdown accumulated by ``PhaseTokenProfilerCallback``.
+    * Flushes the full phase breakdown to ``TOKEN_PROFILING_LOG_FILE``.
+    * Posts **only the total** (prompt + completion + grand total) to the
+      Jira comment — the phase table stays in the log file only.
     """
 
     state_schema = AgentState
@@ -72,10 +95,16 @@ class TicketTokenUsageMiddleware(AgentMiddleware):
     async def aafter_agent(self, state: AgentState, runtime: Runtime) -> dict[str, Any] | None:
         """Finalise the run: compute a new cumulative total and post to Jira.
 
-        Reads the prior total from thread metadata, adds the current run's
-        usage, builds a markdown JSON body and either creates a new Jira
-        comment or updates the existing one. Persists the new comment id
-        and cumulative total back to thread metadata.
+        Steps
+        -----
+        1. Resolve the Jira issue key from thread metadata.
+        2. Merge the per-middleware run accumulator with any tokens captured by
+           the ``PhaseTokenProfilerCallback`` (held in ``PhaseTokenLedger``).
+        3. Flush the phase-breakdown table to the profiling log file.
+        4. Post / update the Jira comment with the cumulative **total only**
+           (no phase breakdown is included in the Jira comment).
+        5. Persist the new comment id and cumulative total back to thread
+           metadata for the next run.
         """
         logger.debug("aafter_agent: entered with _run_accum=%s", self._run_accum)
 
@@ -124,21 +153,58 @@ class TicketTokenUsageMiddleware(AgentMiddleware):
         if not jira_env_ok:
             logger.warning("aafter_agent: Jira env vars are not fully configured")
 
+        # ------------------------------------------------------------------
+        # Phase-aware: flush ledger to log file (phase breakdown only goes
+        # to the log, NOT to the Jira comment).
+        # ------------------------------------------------------------------
+        try:
+            ledger = PhaseTokenLedger.get(ticket_id)
+            ledger.flush_to_file(thread_id=thread_id)
+
+            # Log the markdown table to the logger as well (visible in
+            # application logs / TOKEN_USAGE_LOG_FILE debug output).
+            phase_table = ledger.build_markdown_table()
+            logger.info(
+                "Phase token breakdown for %s (thread=%s):\n%s",
+                ticket_id,
+                thread_id,
+                phase_table,
+            )
+
+            # Use the ledger's grand totals as the canonical numbers; they
+            # include tokens captured by PhaseTokenProfilerCallback as well as
+            # any that the middleware accumulator saw directly.
+            ledger_totals = ledger.get_totals()
+            # Merge: take whichever is larger between the ledger and middleware
+            # accumulator for each bucket (avoids double-counting).
+            merged_prompt = max(self._run_accum["prompt"], ledger_totals["prompt"])
+            merged_completion = max(self._run_accum["completion"], ledger_totals["completion"])
+            merged_total = merged_prompt + merged_completion
+            run_total = {
+                "prompt": merged_prompt,
+                "completion": merged_completion,
+                "total": merged_total,
+            }
+        except Exception:
+            logger.exception("Failed to flush phase ledger; falling back to run accumulator")
+            run_total = dict(self._run_accum)
+
         existing_comment_id = metadata.get(_USAGE_COMMENT_META_KEY)
-        ticket_total = _read_ticket_total(metadata)
+        ticket_total_prior = _read_ticket_total(metadata)
         new_total = {
-            "prompt": ticket_total["prompt"] + self._run_accum["prompt"],
-            "completion": ticket_total["completion"] + self._run_accum["completion"],
-            "total": ticket_total["total"] + self._run_accum["total"],
+            "prompt": ticket_total_prior["prompt"] + run_total["prompt"],
+            "completion": ticket_total_prior["completion"] + run_total["completion"],
+            "total": ticket_total_prior["total"] + run_total["total"],
         }
         logger.debug(
-            "aafter_agent: ticket_total=%s run=%s new_total=%s comment_id=%s",
-            ticket_total,
-            self._run_accum,
+            "aafter_agent: ticket_total_prior=%s run_total=%s new_total=%s comment_id=%s",
+            ticket_total_prior,
+            run_total,
             new_total,
             existing_comment_id,
         )
 
+        # Only the grand total goes to Jira (no phase breakdown in the comment).
         body = _build_comment_body(ticket_id, new_total)
         comment_id = await _post_or_update(ticket_id, existing_comment_id, body)
         logger.debug("aafter_agent: post_or_update returned comment_id=%s", comment_id)
@@ -255,11 +321,24 @@ def _read_ticket_total(metadata: dict[str, Any]) -> dict[str, int]:
 
 
 def _build_comment_body(ticket_id: str, total: dict[str, int]) -> str:
-    """Render the token-usage markdown body for a Jira comment."""
+    """Render the token-usage markdown body for a Jira comment.
+
+    Only the grand total is included — the per-phase breakdown is written
+    to the profiling log file, not to Jira.
+    """
+    p = total["prompt"]
+    c = total["completion"]
+    t = total["total"]
     return (
-        f"**Token Usage** \u00b7 {ticket_id}\n"
-        f"\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n"
-        f"```json\n{json.dumps(total, separators=(',', ':'))}\n```"
+        f"**Token Usage** · {ticket_id}\n"
+        f"───────────────────────────\n"
+        f"| | Tokens |\n"
+        f"|---|---|\n"
+        f"| Prompt | {p:,} |\n"
+        f"| Completion | {c:,} |\n"
+        f"| **Total** | **{t:,}** |\n"
+        f"\n"
+        f"*Phase breakdown is available in the agent profiling log.*"
     )
 
 
@@ -267,6 +346,11 @@ async def _post_or_update(ticket_id: str, existing_comment_id: str | None, body:
     """Update an existing Jira comment or create a new one and return its id."""
     if existing_comment_id:
         ok = await update_jira_comment(ticket_id, existing_comment_id, body)
-        return existing_comment_id if ok else None
+        if ok:
+            return existing_comment_id
+        logger.warning(
+            "Failed to update existing Jira comment %s; falling back to creating a new comment",
+            existing_comment_id,
+        )
     new_id = await post_jira_comment(ticket_id, body)
     return new_id
