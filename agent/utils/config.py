@@ -28,7 +28,7 @@ DOCKER_SANDBOX_SECCOMP_PROFILE: str = ""
 LOCAL_SANDBOX_ROOT_DIR: str = "."
 
 # ── Modal Sandbox ──
-MODAL_APP_NAME: str = "open-swe"
+# MODAL_APP_NAME: str = "open-swe"
 
 # ── Daytona Sandbox ──
 # DAYTONA_SANDBOX_SNAPSHOT: str = "daytonaio/sandbox:0.6.0"

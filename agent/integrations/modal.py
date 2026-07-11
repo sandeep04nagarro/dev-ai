@@ -1,26 +1,26 @@
-import modal
-from langchain_modal import ModalSandbox
+# import modal
+# from langchain_modal import ModalSandbox
 
-from agent.utils import config as cfg
+# from agent.utils import config as cfg
 
-MODAL_APP_NAME = cfg.MODAL_APP_NAME
+# MODAL_APP_NAME = cfg.MODAL_APP_NAME
 
 
-def create_modal_sandbox(sandbox_id: str | None = None):
-    """Create or reconnect to a Modal sandbox.
+# def create_modal_sandbox(sandbox_id: str | None = None):
+#     """Create or reconnect to a Modal sandbox.
 
-    Args:
-        sandbox_id: Optional existing sandbox ID to reconnect to.
-            If None, creates a new sandbox.
+#     Args:
+#         sandbox_id: Optional existing sandbox ID to reconnect to.
+#             If None, creates a new sandbox.
 
-    Returns:
-        ModalSandbox instance implementing SandboxBackendProtocol.
-    """
-    app = modal.App.lookup(MODAL_APP_NAME)
+#     Returns:
+#         ModalSandbox instance implementing SandboxBackendProtocol.
+#     """
+#     app = modal.App.lookup(MODAL_APP_NAME)
 
-    if sandbox_id:
-        sandbox = modal.Sandbox.from_id(sandbox_id, app=app)
-    else:
-        sandbox = modal.Sandbox.create(app=app)
+#     if sandbox_id:
+#         sandbox = modal.Sandbox.from_id(sandbox_id, app=app)
+#     else:
+#         sandbox = modal.Sandbox.create(app=app)
 
-    return ModalSandbox(sandbox=sandbox)
+#     return ModalSandbox(sandbox=sandbox)

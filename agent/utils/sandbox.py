@@ -4,7 +4,7 @@ import asyncio
 from agent.integrations.docker import create_docker_sandbox
 # from agent.integrations.langsmith import create_langsmith_sandbox
 from agent.integrations.local import create_local_sandbox
-from agent.integrations.modal import create_modal_sandbox
+# from agent.integrations.modal import create_modal_sandbox
 from agent.integrations.runloop import create_runloop_sandbox
 from agent.utils import config as cfg
 
@@ -12,7 +12,7 @@ SANDBOX_FACTORIES = {
     # "langsmith": create_langsmith_sandbox,
     # "daytona": create_daytona_sandbox,
     "docker": create_docker_sandbox,
-    "modal": create_modal_sandbox,
+    # "modal": create_modal_sandbox,
     "runloop": create_runloop_sandbox,
     "local": create_local_sandbox,
 }
