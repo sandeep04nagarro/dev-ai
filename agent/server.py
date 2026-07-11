@@ -205,7 +205,7 @@ async def _recreate_sandbox(thread_id: str) -> SandboxBackendProtocol:
 
 
 async def check_or_recreate_sandbox(
-    sandbox_backend: SandboxBackendProtocol, thread_id: str
+    sandbox_backend: SandboxBackendProtocol, thread_id: str, sandbox_id: str |None = None,
 ) -> SandboxBackendProtocol:
     """Check if a cached sandbox is reachable; recreate it if not.
 
@@ -213,9 +213,13 @@ async def check_or_recreate_sandbox(
     unreachable (SandboxClientError), it is torn down and a fresh one
     is created via _recreate_sandbox.
 
+    Has an optional sandbox_id for reconnecting to existing sandbox.
+
     Returns the original backend if healthy, or a new one if recreated.
     """
     try:
+        if sandbox_id:
+            sandbox_backend = await create_sandbox(sandbox_id)
         await asyncio.to_thread(sandbox_backend.execute, "echo ok")
     except SandboxClientError:
         logger.warning(
@@ -280,7 +284,7 @@ async def ensure_sandbox_for_thread(thread_id: str) -> SandboxBackendProtocol:
     if sandbox_backend:
         logger.info("Using cached sandbox backend for thread %s", thread_id)
         # original_sandbox_id = sandbox_backend.id
-        sandbox_backend = await check_or_recreate_sandbox(sandbox_backend, thread_id)
+        sandbox_backend = await check_or_recreate_sandbox(sandbox_backend, thread_id, sandbox_id=sandbox_id)
         # if sandbox_backend.id == original_sandbox_id:
         #     sandbox_backend = await _refresh_github_proxy_or_recreate(sandbox_backend, thread_id)
     elif sandbox_id is None:
@@ -301,7 +305,7 @@ async def ensure_sandbox_for_thread(thread_id: str) -> SandboxBackendProtocol:
         logger.info("Connecting to existing sandbox %s", sandbox_id)
         created_replacement_sandbox = False
         try:
-            sandbox_backend = await asyncio.to_thread(create_sandbox, sandbox_id)
+            sandbox_backend = await create_sandbox(sandbox_id)
         except Exception:
             logger.warning("Failed to connect to existing sandbox %s, creating new one", sandbox_id)
             await client.threads.update(
