@@ -31,7 +31,7 @@ LOCAL_SANDBOX_ROOT_DIR: str = "."
 MODAL_APP_NAME: str = "open-swe"
 
 # ── Daytona Sandbox ──
-DAYTONA_SANDBOX_SNAPSHOT: str = "daytonaio/sandbox:0.6.0"
+# DAYTONA_SANDBOX_SNAPSHOT: str = "daytonaio/sandbox:0.6.0"
 
 # ── LangSmith (non-secret) ──
 # LANGSMITH_URL_PROD: str = "https://smith.langchain.com"

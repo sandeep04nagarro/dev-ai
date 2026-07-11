@@ -1,6 +1,6 @@
 from deepagents.backends.protocol import SandboxBackendProtocol
 import asyncio
-from agent.integrations.daytona import create_daytona_sandbox
+# from agent.integrations.daytona import create_daytona_sandbox
 from agent.integrations.docker import create_docker_sandbox
 # from agent.integrations.langsmith import create_langsmith_sandbox
 from agent.integrations.local import create_local_sandbox
@@ -10,7 +10,7 @@ from agent.utils import config as cfg
 
 SANDBOX_FACTORIES = {
     # "langsmith": create_langsmith_sandbox,
-    "daytona": create_daytona_sandbox,
+    # "daytona": create_daytona_sandbox,
     "docker": create_docker_sandbox,
     "modal": create_modal_sandbox,
     "runloop": create_runloop_sandbox,
