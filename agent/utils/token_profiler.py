@@ -10,8 +10,8 @@ This module provides:
    * ``tool_execution``        — agent calls that follow at least one tool result
    * ``review``                — calls made inside the reviewer graph
 
-   The callback writes a JSON-Lines entry to ``TOKEN_PROFILING_LOG_FILE`` on
-   every model completion so nothing is lost if the process crashes.
+   The callback keeps an in-process ledger that is logged to the server logger
+   on every agent completion.
 
 2. ``PhaseTokenLedger`` — an in-process singleton that accumulates per-phase
    token counts for a single issue run and exposes a helper to build the
@@ -34,23 +34,20 @@ Usage
     callbacks = config.get("callbacks") or []
     config["callbacks"] = callbacks + [callback]
 
-**In ``ticket_token_usage.py``** — flush the ledger to the log file and
+**In ``ticket_token_usage.py``** — flush the ledger to the server logs and
 return total numbers for the Jira comment::
 
     from agent.utils.token_profiler import PhaseTokenLedger
 
     ledger = PhaseTokenLedger.get(issue_key)
     total = ledger.get_totals()  # {"prompt": …, "completion": …, "total": …}
-    ledger.flush_to_file(thread_id)  # writes phase breakdown to log file
+    # phase breakdown is automatically logged to stdout
 """
 
 from __future__ import annotations
 
-import json
 import logging
-import os
 import threading
-from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -59,38 +56,6 @@ from langchain_core.messages import AIMessage
 from langchain_core.outputs import LLMResult
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Configuration — log-file path
-# ---------------------------------------------------------------------------
-
-# Resolved once at import time.  Operators can set TOKEN_PROFILING_LOG_FILE
-# to an absolute path; if only TOKEN_USAGE_LOG_FILE is set we fall back to
-# that directory; otherwise we write next to the process CWD.
-_env_profiling_file = os.environ.get("TOKEN_PROFILING_LOG_FILE", "")
-_env_usage_file = os.environ.get("TOKEN_USAGE_LOG_FILE", "")
-
-def get_profiling_log_file(issue_key: str) -> str:
-    """Return the absolute path to the token profiling log file for an issue."""
-    if _env_profiling_file:
-        directory = os.path.dirname(os.path.abspath(_env_profiling_file))
-        base = os.path.basename(_env_profiling_file)
-        name, ext = os.path.splitext(base)
-        filename = f"{name}_{issue_key}{ext}"
-    elif _env_usage_file:
-        directory = os.path.dirname(os.path.abspath(_env_usage_file))
-        filename = f"token_profiling_{issue_key}.log"
-    else:
-        directory = os.getcwd()
-        filename = f"token_profiling_{issue_key}.log"
-        
-    try:
-        if directory:
-            os.makedirs(directory, exist_ok=True)
-    except Exception:  # noqa: BLE001
-        pass
-        
-    return os.path.join(directory, filename)
 
 # ---------------------------------------------------------------------------
 # Phase definitions
@@ -188,36 +153,6 @@ class PhaseTokenLedger:
             completion = sum(v["completion_tokens"] for v in self._phases.values())
             return {"prompt": prompt, "completion": completion, "total": prompt + completion}
 
-    # ------------------------------------------------------------------
-    # File I/O
-    # ------------------------------------------------------------------
-
-    def flush_to_file(self, thread_id: str = "") -> None:
-        """Write a JSON-Lines summary entry to ``PROFILING_LOG_FILE``.
-
-        Each entry contains:
-        - ``ts``        — ISO-8601 UTC timestamp
-        - ``issue_key`` — e.g. ``PROJ-123``
-        - ``thread_id`` — LangGraph thread id (may be empty)
-        - ``phases``    — per-phase breakdown
-        - ``totals``    — aggregate numbers
-        """
-        phases = self.get_phase_snapshot()
-        totals = self.get_totals()
-        entry = {
-            "ts": datetime.now(timezone.utc).isoformat(),
-            "issue_key": self._issue_key,
-            "thread_id": thread_id,
-            "phases": phases,
-            "totals": totals,
-        }
-        _append_log_entry(entry, self._issue_key)
-        logger.info(
-            "Token profiling summary written for %s → %s",
-            self._issue_key,
-            get_profiling_log_file(self._issue_key),
-        )
-
     def build_markdown_table(self) -> str:
         """Build a markdown table showing the per-phase token breakdown."""
         phases = self.get_phase_snapshot()
@@ -253,47 +188,6 @@ class PhaseTokenLedger:
 
 
 # ---------------------------------------------------------------------------
-# File helpers
-# ---------------------------------------------------------------------------
-
-_file_lock = threading.Lock()
-
-
-def _append_log_entry(entry: dict[str, Any], issue_key: str) -> None:
-    """Append a JSON-Lines record to the appropriate log file (thread-safe)."""
-    line = json.dumps(entry, separators=(",", ":"))
-    filepath = get_profiling_log_file(issue_key)
-    try:
-        with _file_lock:
-            with open(filepath, "a", encoding="utf-8") as fh:
-                fh.write(line + "\n")
-    except Exception:  # noqa: BLE001
-        logger.exception("Failed to write profiling entry to %s", filepath)
-
-
-def _append_phase_event(
-    issue_key: str,
-    thread_id: str,
-    phase: str,
-    prompt: int,
-    completion: int,
-    total: int,
-) -> None:
-    """Write a single per-call event line (useful for debugging)."""
-    entry = {
-        "ts": datetime.now(timezone.utc).isoformat(),
-        "event": "token_call",
-        "issue_key": issue_key,
-        "thread_id": thread_id,
-        "phase": phase,
-        "prompt_tokens": prompt,
-        "completion_tokens": completion,
-        "total_tokens": total,
-    }
-    _append_log_entry(entry, issue_key)
-
-
-# ---------------------------------------------------------------------------
 # Convenience helper for repo_selector.py
 # ---------------------------------------------------------------------------
 
@@ -319,7 +213,10 @@ def record_repo_selection_tokens(
 
     ledger = PhaseTokenLedger.get(issue_key)
     ledger.add(PHASE_MULTI_REPO_SELECTION, prompt, completion, total)
-    _append_phase_event(issue_key, thread_id, PHASE_MULTI_REPO_SELECTION, prompt, completion, total)
+    logger.info(
+        "PhaseProfiler RepoSelection issue=%s p=%d c=%d t=%d",
+        issue_key, prompt, completion, total
+    )
 
 
 def _extract_usage(response: Any) -> tuple[int, int, int]:
@@ -456,10 +353,7 @@ class PhaseTokenProfilerCallback(BaseCallbackHandler):
 
         ledger = PhaseTokenLedger.get(self._issue_key)
         ledger.add(phase, prompt, completion, total)
-        _append_phase_event(
-            self._issue_key, self._thread_id, phase, prompt, completion, total
-        )
-        logger.debug(
+        logger.info(
             "PhaseProfiler on_llm_end run_id=%s issue=%s phase=%s p=%d c=%d t=%d",
             run_id,
             self._issue_key,

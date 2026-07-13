@@ -22,14 +22,3 @@ TOKEN_USAGE_LOG_FILE: str | None = None
 
 # TOKEN_USAGE_LOG_FILE: str | None = _resolve_log_path("/home/nishchay/dev-AI/dev-ai/token_usage.log")
 
-# ---------------------------------------------------------------------------
-# Phase-based token profiling configuration
-# ---------------------------------------------------------------------------
-
-# File that receives a JSON-Lines stream of per-phase token profiling events.
-# Each line is a JSON object; final summary rows are written when a run ends.
-#
-# Override via the TOKEN_PROFILING_LOG_FILE environment variable.
-# If not set, the file is auto-placed next to TOKEN_USAGE_LOG_FILE (if
-# configured) or in the process working directory.
-TOKEN_PROFILING_LOG_FILE: str | None = os.environ.get("TOKEN_PROFILING_LOG_FILE") or None

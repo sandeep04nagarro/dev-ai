@@ -10,9 +10,7 @@ Phase-aware logging
 This middleware also reads the ``PhaseTokenLedger`` for the current issue key
 and:
 
-1. Writes a full phase-breakdown JSON-Lines entry to ``TOKEN_PROFILING_LOG_FILE``
-   (or the file resolved by ``token_profiler.py``) so engineers can inspect
-   per-phase consumption without touching Jira.
+1. Logs the markdown table breakdown to the server logs.
 
 2. Posts **only the grand-total line** to the Jira comment — no phase table
    appears in Jira.
@@ -20,7 +18,6 @@ and:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
@@ -67,11 +64,9 @@ class TicketTokenUsageMiddleware(AgentMiddleware):
     ----------------------
     At run end (``aafter_agent``) this middleware:
 
-    * Reads the ``PhaseTokenLedger`` for the current issue to obtain the
-      phase breakdown accumulated by ``PhaseTokenProfilerCallback``.
-    * Flushes the full phase breakdown to ``TOKEN_PROFILING_LOG_FILE``.
-    * Posts **only the total** (prompt + completion + grand total) to the
-      Jira comment — the phase table stays in the log file only.
+    * Looks up the ``PhaseTokenLedger`` for the ticket.
+    * Logs the full phase breakdown to the server log.
+    * Updates the configured Jira ticket with the usage counts.
     """
 
     state_schema = AgentState
@@ -155,12 +150,10 @@ class TicketTokenUsageMiddleware(AgentMiddleware):
             logger.warning("aafter_agent: Jira env vars are not fully configured")
 
         # ------------------------------------------------------------------
-        # Phase-aware: flush ledger to log file (phase breakdown only goes
-        # to the log, NOT to the Jira comment).
+        # Phase-aware: log the breakdown to server logs
         # ------------------------------------------------------------------
         try:
             ledger = PhaseTokenLedger.get(ticket_id)
-            await asyncio.to_thread(ledger.flush_to_file, thread_id)
 
             # Log the markdown table to the logger as well (visible in
             # application logs / TOKEN_USAGE_LOG_FILE debug output).
@@ -205,8 +198,8 @@ class TicketTokenUsageMiddleware(AgentMiddleware):
             existing_comment_id,
         )
 
-        # Only the grand total goes to Jira (no phase breakdown in the comment).
-        body = _build_comment_body(ticket_id, new_total)
+        # Include both grand totals and phase breakdown in the Jira comment.
+        body = _build_comment_body(ticket_id, new_total, phase_table)
         comment_id = await _post_or_update(ticket_id, existing_comment_id, body)
         logger.debug("aafter_agent: post_or_update returned comment_id=%s", comment_id)
 
@@ -321,25 +314,24 @@ def _read_ticket_total(metadata: dict[str, Any]) -> dict[str, int]:
     return {"prompt": 0, "completion": 0, "total": 0}
 
 
-def _build_comment_body(ticket_id: str, total: dict[str, int]) -> str:
+def _build_comment_body(ticket_id: str, total: dict[str, int], phase_table: str) -> str:
     """Render the token-usage markdown body for a Jira comment.
-
-    Only the grand total is included — the per-phase breakdown is written
-    to the profiling log file, not to Jira.
     """
     p = total["prompt"]
     c = total["completion"]
     t = total["total"]
+    
     return (
         f"**Token Usage** · {ticket_id}\n"
-        f"───────────────────────────\n"
+        f"───────────────────────────\n\n"
+        f"**Cumulative Totals:**\n"
         f"| | Tokens |\n"
         f"|---|---|\n"
         f"| Prompt | {p:,} |\n"
         f"| Completion | {c:,} |\n"
-        f"| **Total** | **{t:,}** |\n"
-        f"\n"
-        f"*Phase breakdown is available in the agent profiling log.*"
+        f"| **Total** | **{t:,}** |\n\n"
+        f"**Current Run Phase Breakdown:**\n\n"
+        f"{phase_table}"
     )
 
 
