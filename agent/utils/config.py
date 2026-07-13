@@ -1,7 +1,5 @@
 from pathlib import Path
 
-# ── LangGraph ──
-LANGGRAPH_URL: str = "http://localhost:2024"
 
 # ── LLM / Model ──
 LLM_MODEL_ID: str = "deepseek-v4-pro"
@@ -43,8 +41,8 @@ LOCAL_SANDBOX_ROOT_DIR: str = "."
 
 # ── Jira (non-secret) ──
 JIRA_BOT_NAME: str = "Open SWE Agent"
-JIRA_DOMAIN: str = "nagarro-team-u6vtl9j6.atlassian.net"
-JIRA_PROJECT_TO_REPO: str = '{"DT":{"owner":"NishchayGuptaNagarro","name":"DSD-TEST"}}'
+JIRA_DOMAIN: str = ""
+JIRA_PROJECT_TO_REPO: str = '{"JIRA_SPACE_ID":{"owner":"repo_owner_name","name":"repo_name"}}'
 
 # ── Slack (non-secret) ──
 SLACK_BOT_USER_ID: str = ""
@@ -60,10 +58,6 @@ ALLOWED_GITHUB_REPOS: str = ""
 PUBLIC_REPO_ORG_GATE: str = ""
 CONFIGURED_ADMINS: str = ""
 
-# ── Dashboard ──
-DASHBOARD_API_BASE_URL: str = ""
-DASHBOARD_BASE_URL: str = ""
-DASHBOARD_ALLOWED_ORIGINS: str = ""
 
 # ── Recon Agent ──
 RECON_MODEL_ID: str = "deepseek-v4-flash"
@@ -85,8 +79,6 @@ DEBUG_MODE: bool = True
 # ── Prompt ──
 DEFAULT_PROMPT_PATH: str = str(Path(__file__).resolve().parent.parent.parent / "default_prompt.md")
 
-# ── Langfuse URL (key/secret stay in .env) ──
-LANGFUSE_BASE_URL: str = "http://localhost:3000"
 
 # ── Build Metadata ──
 LANGCHAIN_REVISION_ID: str = ""
