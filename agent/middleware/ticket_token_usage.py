@@ -20,6 +20,7 @@ and:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -159,7 +160,7 @@ class TicketTokenUsageMiddleware(AgentMiddleware):
         # ------------------------------------------------------------------
         try:
             ledger = PhaseTokenLedger.get(ticket_id)
-            ledger.flush_to_file(thread_id=thread_id)
+            await asyncio.to_thread(ledger.flush_to_file, thread_id)
 
             # Log the markdown table to the logger as well (visible in
             # application logs / TOKEN_USAGE_LOG_FILE debug output).
