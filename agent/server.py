@@ -536,9 +536,9 @@ async def get_agent(config: RunnableConfig) -> Pregel:
         ],
         subagents=[_general_purpose_subagent(subagent_model)],
         skills=[
-            "./skills/code-review/",
-            "./skills/testing/",
-            "./skills/documentation/",
+            "./skills/code-review/SKILL.md",
+            "./skills/testing/SKILL.md",
+            "./skills/documentation/SKILL.md",
         ],
         backend=backend_factory,
         middleware=build_server_middleware_list(fallback_middleware),
