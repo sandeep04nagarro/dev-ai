@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "GitHubAuthError",
-    "OPEN_SWE_TAGS",
+    "DEV_AGENT_TAGS",
     "build_pr_prompt",
     "extract_pr_context",
     "fetch_issue_comments",
@@ -34,8 +34,8 @@ __all__ = [
     "verify_github_signature",
 ]
 
-OPEN_SWE_TAGS = ("@openswe", "@open-swe", "@openswe-dev")
-_OPEN_SWE_MENTION_RE = re.compile(r"(?i)@(?:openswe-dev|open-swe|openswe)\b")
+DEV_AGENT_TAGS = ("@dev-agent",)
+_DEV_AGENT_MENTION_RE = re.compile(r"(?i)@(?:dev-agent)\b")
 _REVIEW_COMMAND_RE = re.compile(r"(?i)\Areview(?:\s+(https?://\S+))?\s*\Z")
 UNTRUSTED_GITHUB_COMMENT_OPEN_TAG = "<dangerous-external-untrusted-users-comment>"
 UNTRUSTED_GITHUB_COMMENT_CLOSE_TAG = "</dangerous-external-untrusted-users-comment>"
@@ -79,7 +79,7 @@ def get_thread_id_from_branch(branch_name: str) -> str | None:
 
 
 def parse_github_review_command(body: str) -> tuple[bool, str | None]:
-    """Detect ``@open-swe review [URL]`` in a GitHub comment body.
+    """Detect ``@dev-agent review [URL]`` in a GitHub comment body.
 
     Returns ``(is_review_command, optional_pr_url)``. When ``is_review_command``
     is True and the URL is None, the command applies to the PR being commented
@@ -88,7 +88,7 @@ def parse_github_review_command(body: str) -> tuple[bool, str | None]:
     """
     if not body:
         return False, None
-    stripped = _OPEN_SWE_MENTION_RE.sub("", body).strip()
+    stripped = _DEV_AGENT_MENTION_RE.sub("", body).strip()
     match = _REVIEW_COMMAND_RE.match(stripped)
     if not match:
         return False, None
@@ -262,10 +262,10 @@ async def fetch_issue_comments(
 async def fetch_pr_comments_since_last_tag(
     repo_config: dict[str, str], pr_number: int, *, token: str
 ) -> list[dict[str, Any]]:
-    """Fetch all PR comments/reviews since the last @open-swe tag.
+    """Fetch all PR comments/reviews since the last @dev-agent tag.
 
     Fetches from all 3 GitHub comment sources, merges and sorts chronologically,
-    then returns every comment from the last @open-swe mention onwards.
+    then returns every comment from the last @dev-agent mention onwards.
 
     For inline review comments the dict also includes:
     - 'path': file path commented on
@@ -278,7 +278,7 @@ async def fetch_pr_comments_since_last_tag(
         token: GitHub access token.
 
     Returns:
-        List of comment dicts ordered chronologically from last @open-swe tag.
+        List of comment dicts ordered chronologically from last @dev-agent tag.
     """
     owner = repo_config.get("owner", "")
     repo = repo_config.get("name", "")
@@ -348,17 +348,17 @@ async def fetch_pr_comments_since_last_tag(
     # Sort all comments chronologically
     all_comments.sort(key=lambda c: c.get("created_at", ""))
 
-    # Find all @openswe / @open-swe mention positions
+    # Find all @dev-agent / @dev-agent mention positions
     tag_indices = [
         i
         for i, comment in enumerate(all_comments)
-        if any(tag in (comment.get("body") or "").lower() for tag in OPEN_SWE_TAGS)
+        if any(tag in (comment.get("body") or "").lower() for tag in DEV_AGENT_TAGS)
     ]
 
     if not tag_indices:
         return []
 
-    # If this is the first @openswe invocation (only one tag), return ALL
+    # If this is the first @dev-agent invocation (only one tag), return ALL
     # comments so the agent has full context — inline review comments are
     # drafted before submission and appear earlier in the sorted list.
     # For repeat invocations, return everything since the previous tag.

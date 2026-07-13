@@ -68,7 +68,7 @@ from .utils.github_app import (
     get_github_app_installation_token_with_expiry,
 )
 from .utils.github_comments import (
-    OPEN_SWE_TAGS,
+    DEV_AGENT_TAGS,
     GitHubAuthError,
     build_pr_prompt,
     extract_pr_context,
@@ -164,6 +164,8 @@ _AGENT_VERSION_METADATA: dict[str, str] = (
 ALLOWED_GITHUB_ORGS: frozenset[str] = frozenset(
     org.strip().lower() for org in cfg.ALLOWED_GITHUB_ORGS.split(",") if org.strip()
 )
+# Org whose members are allowed to tag @dev-agent on public repos. When empty,
+# the public-repo gate is disabled (back-compat).
 PUBLIC_REPO_ORG_GATE: str = cfg.PUBLIC_REPO_ORG_GATE.strip()
 
 ALLOWED_GITHUB_REPOS: frozenset[str] = frozenset(
@@ -1111,9 +1113,9 @@ def verify_jira_signature(body: bytes, signature: str, secret: str) -> bool:
 #         if comment_body.startswith(prefix):
 #             logger.debug("Ignoring webhook: comment is our own bot message")
 #             return {"status": "ignored", "reason": "Comment is our own bot message"}
-#     if "@openswe" not in comment_body.lower():
-#         logger.debug("Ignoring webhook: comment doesn't mention @openswe")
-#         return {"status": "ignored", "reason": "Comment doesn't mention @openswe"}
+#     if "@dev-agent" not in comment_body.lower():
+#         logger.debug("Ignoring webhook: comment doesn't mention @dev-agent")
+#         return {"status": "ignored", "reason": "Comment doesn't mention @dev-agent"}
 
 #     issue = data.get("issue", {})
 #     if not issue:
@@ -1347,7 +1349,7 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
     author_email = ""
 
     # ---------------------------------------------------------
-    # SCENARIO A: Triggered by a Comment (@openswe)
+    # SCENARIO A: Triggered by a Comment (@dev-agent)
     # ---------------------------------------------------------
     if webhook_event == "comment_created":
         comment = payload.get("comment", {})
@@ -1368,10 +1370,10 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
                         text_parts.append(inner.get("text", ""))
             comment_body = " ".join(text_parts)
 
-        if "@openswe" not in comment_body.lower():
-            logger.debug("Ignoring Jira webhook: comment doesn't mention @openswe")
-            return {"status": "ignored", "reason": "Comment doesn't mention @openswe"}
-
+        if "@dev-agent" not in comment_body.lower():
+            logger.debug("Ignoring Jira webhook: comment doesn't mention @dev-agent")
+            return {"status": "ignored", "reason": "Comment doesn't mention @dev-agent"}
+        
         author_name = author.get("displayName", "User")
         author_email = author.get("emailAddress", "")
 
@@ -2363,7 +2365,7 @@ async def process_github_pr_review_command(
     event_type: str,
     pr_url_override: str | None,
 ) -> None:
-    """Trigger the reviewer when a PR comment contains ``@open-swe review``.
+    """Trigger the reviewer when a PR comment contains ``@dev-agent review``.
 
     ``pr_url_override`` is the optional URL token that followed ``review``. If
     set, the review targets that PR; otherwise the comment's own PR is used.
@@ -2382,12 +2384,12 @@ async def process_github_pr_review_command(
     if pr_url_override:
         pr_ref = parse_github_pr_url(pr_url_override)
         if pr_ref is None:
-            logger.info("Ignoring @open-swe review with unparseable URL %s", pr_url_override)
+            logger.info("Ignoring @dev-agent review with unparseable URL %s", pr_url_override)
             return
     else:
         pr_number = pr_data.get("number")
         if not pr_number:
-            logger.warning("@open-swe review command missing pr_number, skipping")
+            logger.warning("@dev-agent review command missing pr_number, skipping")
             return
         pr_ref = GitHubPrRef(
             owner=repo_config["owner"],
@@ -2419,7 +2421,7 @@ async def process_github_pr_review_command(
     )
     if not result.get("success"):
         logger.warning(
-            "Failed to trigger reviewer from @open-swe review on %s/%s#%s: %s",
+            "Failed to trigger reviewer from @dev-agent review on %s/%s#%s: %s",
             pr_ref.owner,
             pr_ref.repo,
             pr_ref.number,
@@ -2642,7 +2644,7 @@ async def process_github_push_event(payload: dict[str, Any]) -> None:
     if metadata is None or metadata.get("kind") != REVIEWER_THREAD_KIND:
         logger.info(
             "Push to %s/%s#%s ignored: no reviewer thread for this PR. "
-            "Trigger a first review (Slack `@open-swe review <url>` or request "
+            "Trigger a first review (Slack `@dev-agent review <url>` or request "
             "open-swe[bot] as a GitHub reviewer) to start watching.",
             repo_config["owner"],
             repo_config["name"],
@@ -2795,10 +2797,10 @@ async def _get_or_resolve_thread_github_token(thread_id: str, config: Any) -> st
 
 
 async def process_github_pr_comment(payload: dict[str, Any], event_type: str) -> None:
-    """Process a GitHub PR comment that tagged @open-swe.
+    """Process a GitHub PR comment that tagged @dev-agent.
 
     Retrieves the existing thread token, reacts with 👀, fetches all comments
-    since the last @open-swe tag, then creates or queues a new run.
+    since the last @dev-agent tag, then creates or queues a new run.
 
     Args:
         payload: The parsed GitHub webhook payload.
@@ -2927,7 +2929,7 @@ async def process_github_pr_comment(payload: dict[str, Any], event_type: str) ->
             repo_config, pr_number, token=github_token
         )
     if not comments:
-        logger.info("No comments found since last @open-swe tag for PR %s", pr_number)
+        logger.info("No comments found since last @dev-agent tag for PR %s", pr_number)
         return
 
     prompt = build_pr_prompt(comments, pr_url, repo_config=repo_config)
@@ -3124,7 +3126,7 @@ async def process_github_review_finding_reply(payload: dict[str, Any]) -> None:
 
 
 async def process_github_issue(payload: dict[str, Any], event_type: str) -> None:
-    """Process a GitHub issue or issue comment that tagged @open-swe."""
+    """Process a GitHub issue or issue comment that tagged @dev-agent."""
     issue = payload.get("issue", {})
     repo = payload.get("repository", {})
     repo_config = {
@@ -3280,7 +3282,7 @@ async def process_github_issue(payload: dict[str, Any], event_type: str) -> None
 
 @app.post("/webhooks/github")
 async def github_webhook(request: Request, background_tasks: BackgroundTasks) -> dict[str, str]:
-    """Handle GitHub webhooks for issue and PR events that tag @open-swe."""
+    """Handle GitHub webhooks for issue and PR events that tag @dev-agent."""
     body = await request.body()
 
     signature = request.headers.get("X-Hub-Signature-256", "")
@@ -3380,9 +3382,9 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
                 return {"status": "ignored", "reason": "Issue edit did not change title or body"}
 
         issue_text = f"{issue.get('title', '')}\n\n{issue.get('body', '')}".lower()
-        if not any(tag in issue_text for tag in OPEN_SWE_TAGS):
-            logger.info("Ignoring issue that does not mention @openswe or @open-swe")
-            return {"status": "ignored", "reason": "Issue does not mention @openswe or @open-swe"}
+        if not any(tag in issue_text for tag in DEV_AGENT_TAGS):
+            logger.info("Ignoring issue that does not mention @dev-agent or @dev-agent")
+            return {"status": "ignored", "reason": "Issue does not mention @dev-agent or @dev-agent"}
 
         gate_rejection = await _enforce_public_repo_org_gate(payload, event_type)
         if gate_rejection is not None:
@@ -3415,13 +3417,13 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
         background_tasks.add_task(process_github_review_finding_reply, payload)
         return {"status": "accepted", "message": "Processing review finding reply"}
 
-    if not any(tag in comment_body.lower() for tag in OPEN_SWE_TAGS):
+    if not any(tag in comment_body.lower() for tag in DEV_AGENT_TAGS):
         logger.debug(
-            "Ignoring GitHub %s%s that does not mention @openswe or @open-swe",
+            "Ignoring GitHub %s%s that does not mention @dev-agent",
             event_type,
             f" action={action}" if action else "",
         )
-        return {"status": "ignored", "reason": "Comment does not mention @openswe or @open-swe"}
+        return {"status": "ignored", "reason": "Comment does not mention @dev-agent or "}
 
     gate_rejection = await _enforce_public_repo_org_gate(payload, event_type)
     if gate_rejection is not None:

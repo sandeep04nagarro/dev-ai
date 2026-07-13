@@ -79,7 +79,7 @@ def test_gate_blocks_non_member_on_public_pr_comment(monkeypatch) -> None:
                     "url": "https://api.github.com/repos/langchain-ai/open-swe/pulls/7"
                 },
             },
-            "comment": {"body": "@open-swe review"},
+            "comment": {"body": "@dev-agent review"},
             "repository": {
                 "owner": {"login": "langchain-ai"},
                 "name": "open-swe",
@@ -121,7 +121,7 @@ def test_gate_allows_org_member_on_public_pr_comment(monkeypatch) -> None:
                     "url": "https://api.github.com/repos/langchain-ai/open-swe/pulls/7"
                 },
             },
-            "comment": {"body": "@open-swe review"},
+            "comment": {"body": "@dev-agent review"},
             "repository": {
                 "owner": {"login": "langchain-ai"},
                 "name": "open-swe",
@@ -161,7 +161,7 @@ def test_gate_skipped_on_private_repo(monkeypatch) -> None:
                     "url": "https://api.github.com/repos/langchain-ai/open-swe/pulls/7"
                 },
             },
-            "comment": {"body": "@open-swe please look at this"},
+            "comment": {"body": "@dev-agent please look at this"},
             "repository": {
                 "owner": {"login": "langchain-ai"},
                 "name": "open-swe",
@@ -202,7 +202,7 @@ def test_gate_disabled_when_env_unset(monkeypatch) -> None:
                     "url": "https://api.github.com/repos/langchain-ai/open-swe/pulls/7"
                 },
             },
-            "comment": {"body": "@open-swe please look at this"},
+            "comment": {"body": "@dev-agent please look at this"},
             "repository": {
                 "owner": {"login": "langchain-ai"},
                 "name": "open-swe",
@@ -236,7 +236,7 @@ def test_gate_blocks_non_member_on_public_issue(monkeypatch) -> None:
             "issue": {
                 "id": 1,
                 "number": 7,
-                "title": "@openswe please help",
+                "title": "@dev-agent please help",
                 "body": "x",
             },
             "repository": {
@@ -318,7 +318,7 @@ def test_gate_allows_internal_bot_sender(monkeypatch) -> None:
                     "url": "https://api.github.com/repos/langchain-ai/open-swe/pulls/7"
                 },
             },
-            "comment": {"body": "@open-swe please look at this"},
+            "comment": {"body": "@dev-agent please look at this"},
             "repository": {
                 "owner": {"login": "langchain-ai"},
                 "name": "open-swe",
