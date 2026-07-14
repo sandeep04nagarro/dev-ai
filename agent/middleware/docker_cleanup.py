@@ -11,14 +11,15 @@ import asyncio
 import logging
 import os
 from typing import Any
+import time
 
 from docker.errors import APIError, NotFound
 from langchain.agents.middleware import AgentState, after_agent
 from langgraph.config import get_config
 from langgraph.runtime import Runtime
 
-from ..integrations.docker import DockerSandbox
-from ..utils.sandbox_state import SANDBOX_BACKENDS, unwrap_sandbox_backend
+from agent.integrations.docker import DockerSandbox
+from agent.utils.sandbox_state import SANDBOX_BACKENDS, unwrap_sandbox_backend
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +55,19 @@ async def docker_cleanup_middleware(
 
     container_id = current.id
     try:
+        logger.info( # temp logging
+            "STOP begin %s at %f",
+            container_id,
+            time.time(),
+        )
         await asyncio.to_thread(current._container.stop, timeout=5)  # noqa: SLF001
+        logger.info( # temp logging
+            "STOP complete %s at %f",
+            container_id,
+            time.time(),
+        )
         logger.info("Stopped container %s", container_id)
+
     except NotFound:
         logger.info("Container %s already stopped or removed", container_id)
     except APIError as e:

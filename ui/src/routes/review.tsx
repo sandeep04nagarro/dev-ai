@@ -33,7 +33,7 @@ const TRIGGER_MODES: Array<{ value: TriggerMode; label: string; description: str
   {
     value: "manual",
     label: "Manual Only",
-    description: "Only review when '@open-swe review' is commented",
+    description: "Only review when '@dev-agent review' is commented",
   },
 ];
 

@@ -11,7 +11,7 @@ JIRA_WEBHOOK_SECRET = "2579fc5067d3a8ac51e155255d0673f9782d6bff3fe7b16eefbf6d322
 
 # ── Build the payload ──────────────────────────────────────────────
 # Simulates a "comment_created" event on issue OSJ-99
-# with an @openswe mention in the comment body
+# with an @dev-agent mention in the comment body
 payload = {
     "webhookEvent": "comment_created",
     "issue": {
@@ -63,7 +63,7 @@ payload = {
                     "content": [
                         {
                             "type": "text",
-                            "text": "@openswe please implement this feature across both repos",
+                            "text": "@dev-agent please implement this feature across both repos",
                         }
                     ],
                 }

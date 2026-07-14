@@ -3,6 +3,7 @@
   "python_version": "3.12",
   "graphs": {
     "agent": "agent.server:get_agent",
+    "recon_agent": "agent.recon_agent:get_recon_agent",
     "reviewer": "agent.reviewer:get_reviewer_agent",
     "review_style_analyzer": "agent.review_style_analyzer:get_review_style_analyzer"
   },
@@ -10,5 +11,5 @@
   "http": {
     "app": "agent.webapp:app"
   },
-  "env": ".env" 
+  "env": ".env"
 }
