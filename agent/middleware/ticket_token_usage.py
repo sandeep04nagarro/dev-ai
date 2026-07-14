@@ -19,7 +19,8 @@ from langgraph.config import get_config
 from langgraph.runtime import Runtime
 from langgraph_sdk import get_client
 
-from agent.utils.config import TOKEN_USAGE_LOG_FILE
+from agent.utils.config import TokenLogConfig
+TOKEN_USAGE_LOG_FILE = TokenLogConfig.USAGE_LOG_FILE
 from agent.utils.jira import post_jira_comment, update_jira_comment
 
 logger = logging.getLogger(__name__)

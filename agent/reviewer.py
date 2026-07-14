@@ -59,7 +59,7 @@ from .tools import (
     update_finding,
     web_search,
 )
-from agent.utils import config as cfg
+from agent.utils.config import SandboxConfig
 from .utils.agents_md import fetch_agents_md
 from .utils.auth import resolve_github_token
 from .utils.github_token import get_github_token_from_thread
@@ -783,7 +783,7 @@ async def get_reviewer_agent(config: RunnableConfig) -> Pregel:
     del github_token
 
     # Determine GitHub auth prefix based on sandbox type
-    gh_auth_prefix = "GH_TOKEN=dummy " if cfg.SANDBOX_TYPE == "langsmith" else ""
+    gh_auth_prefix = "GH_TOKEN=dummy " if SandboxConfig.TYPE == "langsmith" else ""
 
     system_prompt = _reviewer_system_prompt(
         f"{work_dir}/{repo_name}" if repo_name else work_dir,

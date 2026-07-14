@@ -6,7 +6,7 @@ from agent.integrations.docker import create_docker_sandbox
 from agent.integrations.local import create_local_sandbox
 # from agent.integrations.modal import create_modal_sandbox
 # from agent.integrations.runloop import create_runloop_sandbox
-from agent.utils import config as cfg
+from agent.utils.config import SandboxConfig
 
 SANDBOX_FACTORIES = {
     # "langsmith": create_langsmith_sandbox,
@@ -30,7 +30,7 @@ async def create_sandbox(sandbox_id: str | None = None) -> SandboxBackendProtoco
     Returns:
         A sandbox backend implementing SandboxBackendProtocol.
     """
-    sandbox_type = cfg.SANDBOX_TYPE
+    sandbox_type = SandboxConfig.TYPE
     factory = SANDBOX_FACTORIES.get(sandbox_type)
     if not factory:
         supported = ", ".join(sorted(SANDBOX_FACTORIES))

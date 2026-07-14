@@ -16,7 +16,6 @@ import httpx
 import jwt
 from fastapi import HTTPException, Request
 
-from agent.utils import config as cfg
 
 logger = logging.getLogger(__name__)
 

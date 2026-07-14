@@ -34,7 +34,7 @@ from agent.middleware import (  # noqa: E402
     ModelFallbackMiddleware,
     build_server_middleware_list,
 )
-from agent.utils import config as cfg
+from agent.utils.config import LLMConfig
 
 from .dashboard.agent_overrides import (
     load_profile,
@@ -479,7 +479,7 @@ async def get_agent(config: RunnableConfig) -> Pregel:
         max_tokens=DEFAULT_LLM_MAX_TOKENS,
     )
 
-    fallback_model_id = cfg.LLM_FALLBACK_MODEL_ID or fallback_model_id_for(model_id)
+    fallback_model_id = LLMConfig.FALLBACK_MODEL_ID or fallback_model_id_for(model_id)
     fallback_middleware: list[Any] = []
     if fallback_model_id and fallback_model_id != model_id:
         fallback_kwargs: ModelKwargs = {"max_tokens": DEFAULT_LLM_MAX_TOKENS}

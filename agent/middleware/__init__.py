@@ -21,10 +21,10 @@ from agent.middleware.sanitize_thinking_blocks import SanitizeThinkingBlocksMidd
 from agent.middleware.sanitize_tool_inputs import SanitizeToolInputsMiddleware
 from agent.middleware.ticket_token_usage import TicketTokenUsageMiddleware
 from agent.middleware.tool_error_handler import ToolErrorMiddleware
-from agent.utils import config as cfg
+from agent.utils.config import SandboxConfig, MiddlewareConfig
 
-MODEL_CALL_RECURSION_LIMIT = cfg.MODEL_CALL_RECURSION_LIMIT
-RECON_MODEL_CALL_RECURSION_LIMIT = cfg.RECON_MODEL_CALL_RECURSION_LIMIT
+MODEL_CALL_RECURSION_LIMIT = MiddlewareConfig.MODEL_CALL_RECURSION_LIMIT
+RECON_MODEL_CALL_RECURSION_LIMIT = MiddlewareConfig.RECON_MODEL_CALL_RECURSION_LIMIT
 
 CONSECUTIVE_FAILURE_THRESHOLDS: dict[str, int] = {
     "execute": 5,
@@ -92,7 +92,7 @@ def build_server_middleware_list(
         *fallback_middleware,
         SanitizeThinkingBlocksMiddleware(),
     ]
-    if cfg.SANDBOX_TYPE == "docker":
+    if SandboxConfig.TYPE == "docker":
         from .docker_cleanup import docker_cleanup_middleware
 
         middleware.append(docker_cleanup_middleware)

@@ -4,7 +4,7 @@ import logging
 import os
 from typing import Any
 
-from agent.utils import config as cfg
+from agent.utils.config import ReconConfig
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +150,7 @@ def decide_tier(recon_findings: dict[str, Any] | None, jira_fields: dict[str, An
         return "heavy"
 
     steps_used = recon_findings.get("steps_used", 0)
-    recon_step_limit = cfg.RECON_STEP_LIMIT
+    recon_step_limit = ReconConfig.STEP_LIMIT
     if steps_used >= recon_step_limit - 2:
         return "heavy"
 

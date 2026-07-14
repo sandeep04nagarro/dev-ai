@@ -7,15 +7,15 @@ import logging
 
 from langchain_core.messages import SystemMessage
 
-from agent.utils import config as cfg
+from agent.utils.config import MultiRepoConfig
 from agent.utils.model import make_model
 from agent.utils.multi_repo_registry import RepoConfig, get_project_repos
 
 logger = logging.getLogger(__name__)
 
-MULTI_REPO_SELECTOR_MODEL_ID = cfg.MULTI_REPO_SELECTOR_MODEL_ID
-MULTI_REPO_SELECTOR_FALLBACK = cfg.MULTI_REPO_SELECTOR_FALLBACK
-MULTI_REPO_SELECTOR_ENABLED = cfg.MULTI_REPO_SELECTOR_ENABLED
+MULTI_REPO_SELECTOR_MODEL_ID = MultiRepoConfig.SELECTOR_MODEL_ID
+MULTI_REPO_SELECTOR_FALLBACK = MultiRepoConfig.SELECTOR_FALLBACK
+MULTI_REPO_SELECTOR_ENABLED = MultiRepoConfig.SELECTOR_ENABLED
 
 REPO_SELECTION_PROMPT = """You are a repository selection assistant. Given a Jira ticket and available repositories,
 determine which repositories are needed to complete this task.

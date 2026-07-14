@@ -13,7 +13,7 @@ from fastapi import HTTPException
 from langgraph_sdk.errors import InternalServerError
 from pydantic import BaseModel, Field
 
-from agent.utils import config as cfg
+from agent.utils.config import BuildConfig
 
 from ..utils.auth import persist_encrypted_github_token
 from ..utils.thread_ops import is_thread_active, langgraph_client, queue_message_for_thread
@@ -32,7 +32,7 @@ _DASHBOARD_STREAM_MODES: tuple[str, ...] = ("values", "updates", "messages-tuple
 
 def _agent_version_metadata() -> dict[str, str]:
     return (
-        {"AGENT_VERSION": cfg.LANGCHAIN_REVISION_ID} if cfg.LANGCHAIN_REVISION_ID else {}
+        {"AGENT_VERSION": BuildConfig.LANGCHAIN_REVISION_ID} if BuildConfig.LANGCHAIN_REVISION_ID else {}
     )
 
 

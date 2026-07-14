@@ -5,7 +5,6 @@ from typing import Any
 from langgraph.config import get_config
 from langgraph_sdk import get_client
 
-from agent.utils import config as cfg
 from agent.utils.slack import (
     convert_mentions_to_slack_format,
     post_slack_thread_reply_with_ts,

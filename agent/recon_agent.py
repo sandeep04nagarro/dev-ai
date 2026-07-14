@@ -18,7 +18,6 @@ from agent.server import (
     graph_loaded_for_execution,
 )
 from agent.tools import fetch_url, http_request, web_search
-from agent.utils import config as cfg
 from agent.utils.model import fallback_model_id_for, make_model, provider_model_kwargs
 from agent.utils.sandbox_paths import aresolve_sandbox_work_dir
 from agent.utils.tracing import get_langfuse_handler

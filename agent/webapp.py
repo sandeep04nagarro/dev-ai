@@ -18,7 +18,7 @@ from langchain_core.messages.content import create_text_block
 from langgraph_sdk import get_client
 from langgraph_sdk.client import LangGraphClient
 
-from agent.utils import config as cfg
+from agent.utils.config import SandboxConfig, JiraConfig, SlackConfig, RepoConfig, ReconConfig, BuildConfig
 from agent.utils.complexity_classifier import (
     decide_tier,
     parse_recon_output,
@@ -145,31 +145,31 @@ app.include_router(dashboard_router)
 
 # LINEAR_WEBHOOK_SECRET = os.environ.get("LINEAR_WEBHOOK_SECRET", "")
 JIRA_WEBHOOK_SECRET = os.environ.get("JIRA_WEBHOOK_SECRET", "")
-JIRA_BOT_NAME = cfg.JIRA_BOT_NAME
+JIRA_BOT_NAME = JiraConfig.BOT_NAME
 GITHUB_WEBHOOK_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "")
 SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET", "")
-SLACK_BOT_USER_ID = cfg.SLACK_BOT_USER_ID
-SLACK_BOT_USERNAME = cfg.SLACK_BOT_USERNAME
-DEFAULT_REPO_OWNER = cfg.DEFAULT_REPO_OWNER
-DEFAULT_REPO_NAME = cfg.DEFAULT_REPO_NAME
-SLACK_REPO_OWNER = cfg.SLACK_REPO_OWNER or cfg.DEFAULT_REPO_OWNER
-SLACK_REPO_NAME = cfg.SLACK_REPO_NAME or cfg.DEFAULT_REPO_NAME
+SLACK_BOT_USER_ID = SlackConfig.BOT_USER_ID
+SLACK_BOT_USERNAME = SlackConfig.BOT_USERNAME
+DEFAULT_REPO_OWNER = RepoConfig.DEFAULT_OWNER
+DEFAULT_REPO_NAME = RepoConfig.DEFAULT_NAME
+SLACK_REPO_OWNER = RepoConfig.SLACK_OWNER or RepoConfig.DEFAULT_OWNER
+SLACK_REPO_NAME = RepoConfig.SLACK_NAME or RepoConfig.DEFAULT_NAME
 
 LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL","http://localhost:2024")
 
 _AGENT_VERSION_METADATA: dict[str, str] = (
-    {"AGENT_VERSION": cfg.LANGCHAIN_REVISION_ID} if cfg.LANGCHAIN_REVISION_ID else {}
+    {"AGENT_VERSION": BuildConfig.LANGCHAIN_REVISION_ID} if BuildConfig.LANGCHAIN_REVISION_ID else {}
 )
 
 ALLOWED_GITHUB_ORGS: frozenset[str] = frozenset(
-    org.strip().lower() for org in cfg.ALLOWED_GITHUB_ORGS.split(",") if org.strip()
+    org.strip().lower() for org in RepoConfig.ALLOWED_GITHUB_ORGS.split(",") if org.strip()
 )
 # Org whose members are allowed to tag @dev-agent on public repos. When empty,
 # the public-repo gate is disabled (back-compat).
-PUBLIC_REPO_ORG_GATE: str = cfg.PUBLIC_REPO_ORG_GATE.strip()
+PUBLIC_REPO_ORG_GATE: str = RepoConfig.PUBLIC_ORG_GATE.strip()
 
 ALLOWED_GITHUB_REPOS: frozenset[str] = frozenset(
-    repo.strip().lower() for repo in cfg.ALLOWED_GITHUB_REPOS.split(",") if repo.strip()
+    repo.strip().lower() for repo in RepoConfig.ALLOWED_GITHUB_REPOS.split(",") if repo.strip()
 )
 
 # LINEAR_API_KEY = os.environ.get("LINEAR_API_KEY", "")
@@ -1557,7 +1557,7 @@ def build_github_issue_prompt(
     comments_text = _build_github_issue_comments_text(comments)
     sanitized_title = sanitize_github_comment_body(title)
     formatted_body = format_github_comment_body_for_prompt(issue_author or github_login, body)
-    sandbox_type = cfg.SANDBOX_TYPE
+    sandbox_type = SandboxConfig.TYPE
     gh_auth_prefix = "GH_TOKEN=dummy " if sandbox_type == "langsmith" else ""
 
     return (
@@ -1794,11 +1794,11 @@ async def process_jira_issue(
     # Layer 0: Static tier check
     tier = run_layer_0(fields)
     logger.debug(
-        "Layer 0 tier=%s, RECON_ENABLED=%s, issue_key=%s", tier, cfg.RECON_ENABLED, issue_key
+        "Layer 0 tier=%s, RECON_ENABLED=%s, issue_key=%s", tier, os.environ.get("RECON_ENABLED", False), issue_key
     )
 
     recon_findings = None
-    if tier is None and cfg.RECON_ENABLED:
+    if tier is None and os.environ.get("RECON_ENABLED", False):
         logger.debug("Starting recon flow for %s — tier=ambiguous", issue_key)
         # Check for existing recon findings via thread metadata
         existing_findings, existing_ticket_hash = None, None
@@ -1848,7 +1848,7 @@ If these findings still apply to this ticket, confirm reuse and exit.
                 user_name=user_name,
             )
 
-            recon_step_limit = cfg.RECON_STEP_LIMIT
+            recon_step_limit = ReconConfig.STEP_LIMIT
             recon_configurable = {
                 "repo": primary_repo,
                 "selected_repos": selected_repos,

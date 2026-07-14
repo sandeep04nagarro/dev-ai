@@ -8,8 +8,6 @@ from typing import Any
 
 from langgraph_sdk import get_client
 
-from agent.utils import config as cfg
-
 logger = logging.getLogger(__name__)
 
 

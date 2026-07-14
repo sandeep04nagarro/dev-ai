@@ -1,14 +1,14 @@
 import logging
 from pathlib import Path
 
-from agent.utils import config as cfg
+from agent.utils.config import SandboxConfig, PromptConfig
 
 from .utils.authorship import CollaboratorIdentity
 from .utils.github_comments import UNTRUSTED_GITHUB_COMMENT_OPEN_TAG
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PROMPT_PATH = cfg.DEFAULT_PROMPT_PATH
+DEFAULT_PROMPT_PATH = PromptConfig.DEFAULT_PATH
 
 
 def _load_default_prompt() -> str:
@@ -496,7 +496,7 @@ def construct_system_prompt(
 ) -> str:
     default_prompt_section = _load_default_prompt()
 
-    gh_auth_prefix = "GH_TOKEN=dummy " if cfg.SANDBOX_TYPE == "langsmith" else ""
+    gh_auth_prefix = "GH_TOKEN=dummy " if SandboxConfig.TYPE == "langsmith" else ""
 
     return SYSTEM_PROMPT_TEMPLATE.format(
         working_dir=working_dir,
@@ -751,7 +751,7 @@ RECON_SYSTEM_PROMPT_TEMPLATE = (
 
 
 def construct_recon_system_prompt(working_dir: str) -> str:
-    gh_auth_prefix = "GH_TOKEN=dummy " if cfg.SANDBOX_TYPE == "langsmith" else ""
+    gh_auth_prefix = "GH_TOKEN=dummy " if SandboxConfig.TYPE == "langsmith" else ""
     return RECON_SYSTEM_PROMPT_TEMPLATE.format(
         working_dir=working_dir,
         gh_auth_prefix=gh_auth_prefix,

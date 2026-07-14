@@ -8,7 +8,6 @@ from typing import Any
 
 from langgraph_sdk import get_client
 
-from agent.utils import config as cfg
 
 from ..review_style_collector import (
     collect_review_samples,

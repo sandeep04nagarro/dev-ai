@@ -17,7 +17,6 @@ from agent.dashboard.project_repos import (
     api_get_project_repos,
     api_set_project_repos,
 )
-from agent.utils import config as cfg
 
 from .admin import is_admin
 from .enabled_repos import (

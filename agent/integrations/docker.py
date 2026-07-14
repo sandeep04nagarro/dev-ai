@@ -22,7 +22,7 @@ from deepagents.backends.protocol import (
 from deepagents.backends.sandbox import BaseSandbox
 from langsmith.sandbox import SandboxClientError
 
-from agent.utils import config as cfg
+from agent.utils.config import DockerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -234,11 +234,11 @@ def create_docker_sandbox(sandbox_id: str | None = None) -> DockerSandbox:
             container.start()
         return DockerSandbox(container)
 
-    image = cfg.DOCKER_SANDBOX_IMAGE
-    mem_limit = cfg.DOCKER_SANDBOX_MEM_LIMIT
-    cpu_count = cfg.DOCKER_SANDBOX_CPU_COUNT
-    network = cfg.DOCKER_SANDBOX_NETWORK
-    seccomp_profile = cfg.DOCKER_SANDBOX_SECCOMP_PROFILE
+    image = DockerConfig.IMAGE
+    mem_limit = DockerConfig.MEM_LIMIT
+    cpu_count = DockerConfig.CPU_COUNT
+    network = DockerConfig.NETWORK
+    seccomp_profile = DockerConfig.SECCOMP_PROFILE
 
     security_opt: list[str] = []
     if seccomp_profile:

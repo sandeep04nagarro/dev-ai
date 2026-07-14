@@ -11,7 +11,6 @@ from langgraph_sdk import get_client
 from langgraph_sdk.client import LangGraphClient
 
 from ..reviewer_findings import list_findings
-from agent.utils import config as cfg
 # from .langsmith import create_langsmith_feedback, delete_langsmith_feedback
 
 logger = logging.getLogger(__name__)

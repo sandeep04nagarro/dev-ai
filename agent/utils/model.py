@@ -2,7 +2,7 @@ from typing import Literal, TypedDict, Unpack
 
 from langchain.chat_models import init_chat_model
 
-from agent.utils import config as cfg
+from agent.utils.config import LLMConfig
 
 OPENAI_RESPONSES_WS_BASE_URL = "wss://api.openai.com/v1"
 
@@ -109,7 +109,7 @@ def make_model(model_id: str, **kwargs: Unpack[ModelKwargs]):
             model_provider = prefix
             actual_model = rest
 
-    base_url = cfg.OPENAI_BASE_URL
+    base_url = LLMConfig.BASE_URL
     is_custom_openai = base_url != "https://api.openai.com/v1"
 
     # If no recognized provider prefix was found, but we have a custom OpenAI base URL,

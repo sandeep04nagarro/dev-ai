@@ -1,6 +1,6 @@
 from deepagents.backends import LocalShellBackend
 
-from agent.utils import config as cfg
+from agent.utils.config import LocalSandboxConfig
 
 
 def create_local_sandbox(sandbox_id: str | None = None):
@@ -17,7 +17,7 @@ def create_local_sandbox(sandbox_id: str | None = None):
     Returns:
         LocalShellBackend instance implementing SandboxBackendProtocol.
     """
-    root_dir = cfg.LOCAL_SANDBOX_ROOT_DIR
+    root_dir = LocalSandboxConfig.ROOT_DIR
 
     return LocalShellBackend(
         root_dir=root_dir,

@@ -14,7 +14,6 @@ from langgraph.graph.state import RunnableConfig
 from langgraph_sdk import get_client
 
 from ..encryption import encrypt_token
-from agent.utils import config as cfg
 from .github_app import get_github_app_installation_token_with_expiry
 from .github_token import get_github_token_from_thread
 from .github_user_email_map import GITHUB_USER_EMAIL_MAP

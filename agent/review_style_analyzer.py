@@ -34,7 +34,7 @@ from .server import (
     graph_loaded_for_execution,
 )
 from .tools.save_review_style import save_review_style_prompt
-from agent.utils import config as cfg
+from agent.utils.config import SandboxConfig
 from .utils.model import DEFAULT_LLM_REASONING, make_model, provider_model_kwargs
 from .utils.sandbox_paths import aresolve_sandbox_work_dir
 from .utils.sandbox_state import unwrap_sandbox_backend
@@ -140,7 +140,7 @@ async def get_review_style_analyzer(config: RunnableConfig) -> Pregel:
     )
 
     # Determine GitHub auth prefix based on sandbox type
-    gh_auth_prefix = "GH_TOKEN=dummy " if cfg.SANDBOX_TYPE == "langsmith" else ""
+    gh_auth_prefix = "GH_TOKEN=dummy " if SandboxConfig.TYPE == "langsmith" else ""
 
     system_prompt = STYLE_ANALYZER_PROMPT.format(
         repo_owner=owner or "<owner>",

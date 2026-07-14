@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from agent.utils import config as cfg
+from agent.utils.config import RepoConfig
 
 
 def _admin_emails() -> frozenset[str]:
-    raw = cfg.CONFIGURED_ADMINS
+    raw = RepoConfig.CONFIGURED_ADMINS
     return frozenset(e.strip().lower() for e in raw.split(",") if e.strip())
 
 

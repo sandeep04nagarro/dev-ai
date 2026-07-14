@@ -11,7 +11,7 @@ from typing import Any
 
 import httpx
 
-from agent.utils import config as cfg
+from agent.utils.config import SandboxConfig
 from .github_token import GitHubAuthError
 from .github_user_email_map import GITHUB_USER_EMAIL_MAP
 
@@ -455,7 +455,7 @@ def build_pr_prompt(
         repo_line = f"## Repository: {repo_config.get('owner')}/{repo_config.get('name')}\n\n"
 
     # Determine GitHub auth prefix based on sandbox type
-    sandbox_type = cfg.SANDBOX_TYPE
+    sandbox_type = SandboxConfig.TYPE
     gh_auth_prefix = "GH_TOKEN=dummy " if sandbox_type == "langsmith" else ""
 
     return (
