@@ -4,6 +4,7 @@
 # Suppress deprecation warnings from langchain_core (e.g., Pydantic V1 on Python 3.14+)
 # ruff: noqa: E402
 import logging
+import os
 import warnings
 from typing import Any
 
@@ -398,14 +399,14 @@ async def get_agent(config: RunnableConfig) -> Pregel:
         return _get_cached_sandbox_backend(_thread_id)
 
     model_id, profile_effort = await get_team_default_model("agent")
-    if cfg.LLM_MODEL_ID:
-        model_id = cfg.LLM_MODEL_ID
+    if os.environ.get("LLM_MODEL_ID","deepseek-v4-flash"):
+        model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
         logger.info("Using LLM_MODEL_ID config override: %s", model_id)
 
     logger.info("Using team default agent model: model=%s effort=%s", model_id, profile_effort)
     subagent_model_id, subagent_effort = await get_team_default_subagent_model("agent")
-    if cfg.LLM_MODEL_ID:
-        subagent_model_id = cfg.LLM_MODEL_ID
+    if os.environ.get("LLM_MODEL_ID","deepseek-v4-flash"):
+        subagent_model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
         logger.info("Using LLM_MODEL_ID environment override for subagent: %s", subagent_model_id)
 
     logger.info(

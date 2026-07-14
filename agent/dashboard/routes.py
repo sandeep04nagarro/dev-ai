@@ -102,14 +102,14 @@ _ADMIN_DEP = Depends(_admin_session)
 
 
 def _api_base_url() -> str:
-    v = cfg.DASHBOARD_API_BASE_URL.rstrip("/")
+    v = os.environ.get("DASHBOARD_API_BASE_URL","").rstrip("/")
     if not v:
         raise HTTPException(500, "DASHBOARD_API_BASE_URL not configured")
     return v
 
 
 def _frontend_base_url() -> str:
-    v = cfg.DASHBOARD_BASE_URL.rstrip("/")
+    v = os.environ.get("DASHBOARD_BASE_URL","").rstrip("/")
     if not v:
         raise HTTPException(500, "DASHBOARD_BASE_URL not configured")
     return v

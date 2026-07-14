@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import logging
 import re
 import uuid
@@ -15,7 +16,7 @@ from agent.utils import config as cfg
 
 logger = logging.getLogger(__name__)
 
-LANGGRAPH_URL = cfg.LANGGRAPH_URL
+LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL","http://localhost:2024")
 
 GITHUB_FEEDBACK_REACTIONS: dict[str, float] = {
     "+1": 1.0,

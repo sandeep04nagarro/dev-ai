@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import logging
 from typing import Any
 
@@ -15,7 +16,7 @@ from .slack import lookup_slack_run_mapping
 
 logger = logging.getLogger(__name__)
 
-LANGGRAPH_URL = cfg.LANGGRAPH_URL
+LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL","http://localhost:2024")
 
 FEEDBACK_REACTIONS: dict[str, float] = {
     "+1": 1.0,

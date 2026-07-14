@@ -155,7 +155,7 @@ DEFAULT_REPO_NAME = cfg.DEFAULT_REPO_NAME
 SLACK_REPO_OWNER = cfg.SLACK_REPO_OWNER or cfg.DEFAULT_REPO_OWNER
 SLACK_REPO_NAME = cfg.SLACK_REPO_NAME or cfg.DEFAULT_REPO_NAME
 
-LANGGRAPH_URL = cfg.LANGGRAPH_URL
+LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL","http://localhost:2024")
 
 _AGENT_VERSION_METADATA: dict[str, str] = (
     {"AGENT_VERSION": cfg.LANGCHAIN_REVISION_ID} if cfg.LANGCHAIN_REVISION_ID else {}
@@ -1866,7 +1866,7 @@ If these findings still apply to this ticket, confirm reuse and exit.
                 "Invoking recon agent — thread_id=%s, step_limit=%d, model=%s",
                 thread_id,
                 recon_step_limit,
-                cfg.RECON_MODEL_ID,
+                os.environ.get("RECON_MODEL_ID","deepseek-v4-flash"),
             )
             recon_state = await langgraph_client.runs.wait(
                 thread_id,
@@ -1929,7 +1929,7 @@ If these findings still apply to this ticket, confirm reuse and exit.
 
     # Set model based on tier (only when explicitly light)
     if tier == "light":
-        configurable["agent_model_id"] = cfg.RECON_MODEL_ID
+        configurable["agent_model_id"] = os.environ.get("RECON_MODEL_ID","deepseek-v4-flash")
         configurable["agent_effort"] = "low"
         logger.debug("Set light model: %s", configurable["agent_model_id"])
 

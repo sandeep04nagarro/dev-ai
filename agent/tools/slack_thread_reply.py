@@ -1,4 +1,5 @@
 import asyncio
+import os
 from typing import Any
 
 from langgraph.config import get_config
@@ -11,7 +12,7 @@ from agent.utils.slack import (
     store_slack_message_run_mapping,
 )
 
-LANGGRAPH_URL = cfg.LANGGRAPH_URL
+LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL","http://localhost:2024")
 
 
 def slack_thread_reply(message: str) -> dict[str, Any]:

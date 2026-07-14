@@ -16,6 +16,7 @@ agent for code review only:
 # ruff: noqa: E402
 
 import logging
+import os
 import re
 import warnings
 
@@ -706,8 +707,8 @@ async def get_reviewer_agent(config: RunnableConfig) -> Pregel:
         subagent_effort = reasoning_effort
     else:
         model_id, reasoning_effort = await get_team_default_model("reviewer")
-        if cfg.LLM_MODEL_ID:
-            model_id = cfg.LLM_MODEL_ID
+        if os.environ.get("LLM_MODEL_ID","deepseek-v4-flash"):
+            model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
             logger.info("Using LLM_MODEL_ID config override: %s", model_id)
 
         logger.info(
@@ -717,8 +718,8 @@ async def get_reviewer_agent(config: RunnableConfig) -> Pregel:
         )
 
         subagent_model_id, subagent_effort = await get_team_default_subagent_model("reviewer")
-        if cfg.LLM_MODEL_ID:
-            subagent_model_id = cfg.LLM_MODEL_ID
+        if os.environ.get("LLM_MODEL_ID","deepseek-v4-flash"):
+            subagent_model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
             logger.info(
                 "Using LLM_MODEL_ID environment override for subagent: %s", subagent_model_id
             )

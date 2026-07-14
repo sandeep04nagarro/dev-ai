@@ -9,6 +9,7 @@ on public repos even when the GitHub App is not installed on them.
 from __future__ import annotations
 
 import asyncio
+import os
 import logging
 import warnings
 
@@ -126,9 +127,9 @@ async def get_review_style_analyzer(config: RunnableConfig) -> Pregel:
     github_token = configurable.get("review_style_github_token")
     # if isinstance(github_token, str) and github_token:
     #     await _configure_sandbox_github_proxy(sandbox_backend, github_token)
-
-    model_id = cfg.LLM_MODEL_ID or DEFAULT_LLM_MODEL_ID
-    if cfg.LLM_MODEL_ID:
+    LLM_MODEL_ID = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
+    model_id = LLM_MODEL_ID or DEFAULT_LLM_MODEL_ID
+    if LLM_MODEL_ID:
         logger.info("Using LLM_MODEL_ID config override for style analyzer: %s", model_id)
 
     model_kwargs = provider_model_kwargs(

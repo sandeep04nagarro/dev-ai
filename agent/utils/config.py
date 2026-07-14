@@ -2,7 +2,6 @@ from pathlib import Path
 
 
 # ── LLM / Model ──
-LLM_MODEL_ID: str = "deepseek-v4-pro"
 LLM_FALLBACK_MODEL_ID: str | None = None
 OPENAI_BASE_URL: str = "https://opencode.ai/zen/go/v1"
 
@@ -60,8 +59,6 @@ CONFIGURED_ADMINS: str = ""
 
 
 # ── Recon Agent ──
-RECON_MODEL_ID: str = "deepseek-v4-flash"
-RECON_ENABLED: bool = False
 RECON_STEP_LIMIT: int = 50
 
 # ── Middleware ──
@@ -74,7 +71,6 @@ MULTI_REPO_SELECTOR_FALLBACK: str = "all"
 MULTI_REPO_SELECTOR_ENABLED: bool = False
 
 # ── Debug ──
-DEBUG_MODE: bool = True
 
 # ── Prompt ──
 DEFAULT_PROMPT_PATH: str = str(Path(__file__).resolve().parent.parent.parent / "default_prompt.md")

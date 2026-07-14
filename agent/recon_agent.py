@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Any
 
 from deepagents import create_deep_agent
@@ -43,7 +44,7 @@ async def get_recon_agent(config: RunnableConfig) -> Pregel:
     sandbox_backend = await ensure_sandbox_for_thread(thread_id)
     work_dir = await aresolve_sandbox_work_dir(sandbox_backend)
 
-    model_id = cfg.RECON_MODEL_ID
+    model_id = os.environ.get("RECON_MODEL_ID","deepseek-v4-flash")
     model_kwargs = provider_model_kwargs(model_id, None, max_tokens=4000)
     model = make_model(model_id, **model_kwargs)
 
