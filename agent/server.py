@@ -182,6 +182,22 @@ async def _configure_git_identity(sandbox_backend: SandboxBackendProtocol) -> No
     )
 
 
+async def _configure_github_auth_in_sandbox(sandbox_backend: SandboxBackendProtocol) -> None:
+    """Configure gh CLI authentication inside the sandbox."""
+    installation_token = await get_github_app_installation_token()
+    if installation_token:
+        logger.info("Configuring GitHub App authentication in sandbox %s", sandbox_backend.id)
+        await asyncio.to_thread(
+            sandbox_backend.execute,
+            f"printf '%s' '{installation_token}' | gh auth login --with-token",
+        )
+    else:
+        logger.warning(
+            "GitHub App is NOT configured. Falling back to GITHUB_TOKEN PAT (if available) for sandbox %s",
+            sandbox_backend.id,
+        )
+
+
 async def _recreate_sandbox(thread_id: str) -> SandboxBackendProtocol:
     """Recreate a sandbox after a connection failure.
 
@@ -331,6 +347,7 @@ async def ensure_sandbox_for_thread(thread_id: str) -> SandboxBackendProtocol:
     # deploys reject commits whose author email can't be resolved to a GitHub
     # account.
     await _configure_git_identity(sandbox_backend)
+    await _configure_github_auth_in_sandbox(sandbox_backend)
 
     return sandbox_backend
 
