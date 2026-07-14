@@ -1,13 +1,14 @@
 import hashlib
 import json
 import logging
+import os
 from typing import Any
 
 from agent.utils import config as cfg
 
 logger = logging.getLogger(__name__)
 
-if cfg.DEBUG_MODE:
+if os.environ.get("DEBUG_MODE",False):
     logger.setLevel(logging.DEBUG)
 
 

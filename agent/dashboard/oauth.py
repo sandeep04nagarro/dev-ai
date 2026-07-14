@@ -48,7 +48,7 @@ def _allowed_redirect_origins() -> set[str]:
     base = os.environ.get("DASHBOARD_BASE_URL","").strip()
     if base:
         origins.add(_origin_of(base))
-    for entry in cfg.DASHBOARD_ALLOWED_ORIGINS.split(","):
+    for entry in os.environ.get("DASHBOARD_ALLOWED_ORIGINS","").split(","):
         entry = entry.strip()
         if entry:
             origins.add(_origin_of(entry))

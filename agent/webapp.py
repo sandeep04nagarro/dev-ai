@@ -115,7 +115,7 @@ from .utils.thread_ops import is_thread_active, queue_message_for_thread
 
 logger = logging.getLogger(__name__)
 
-if cfg.DEBUG_MODE:
+if os.environ.get("DEBUG_MODE",False):
     logger.setLevel(logging.DEBUG)
 
 
@@ -130,7 +130,7 @@ app = FastAPI(
     )
 
 DASHBOARD_ALLOWED_ORIGINS: list[str] = [
-    o.strip() for o in cfg.DASHBOARD_ALLOWED_ORIGINS.split(",") if o.strip()
+    o.strip() for o in os.environ.get("DASHBOARD_ALLOWED_ORIGINS","").split(",") if o.strip()
 ]
 if DASHBOARD_ALLOWED_ORIGINS:
     app.add_middleware(

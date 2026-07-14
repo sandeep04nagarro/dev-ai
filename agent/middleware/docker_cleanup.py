@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from typing import Any
 
@@ -23,7 +24,7 @@ from agent.utils.sandbox_state import SANDBOX_BACKENDS, unwrap_sandbox_backend
 
 logger = logging.getLogger(__name__)
 
-if cfg.DEBUG_MODE:
+if os.environ.get("DEBUG_MODE",False):
     logger.setLevel(logging.DEBUG)
 
 
