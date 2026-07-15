@@ -1596,6 +1596,10 @@ def build_jira_issue_prompt(
         comments_text = "\n\n## Comments:\n"
         for comment in comments:
             author = (comment.get("author") or {}).get("displayName", "User")
+            
+            if author == JIRA_BOT_NAME:
+                continue
+                
             body = comment.get("body")
             extracted_body = extract_adf_text(body)
             
@@ -1670,6 +1674,10 @@ def build_recon_jira_issue_prompt(
         comments_text = "\n\n## Comments:\n"
         for comment in comments:
             author = (comment.get("author") or {}).get("displayName", "User")
+            
+            if author == JIRA_BOT_NAME:
+                continue
+                
             body = comment.get("body")
             extracted_body = extract_adf_text(body)
             if not extracted_body:
