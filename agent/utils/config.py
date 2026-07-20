@@ -35,7 +35,7 @@ class JiraConfig:
     """Jira integration configuration."""
     BOT_NAME: str = "Open SWE Agent"
     DOMAIN: str = ""
-    PROJECT_TO_REPO: str = '{"DT":{"owner":"DevAINag","name":"DSD-WHAdmin-TEST"}}'
+    PROJECT_TO_REPO: str = '{"JIRA_SPACE_ID":{"owner":"repo_owner_name","name":"repo_name"}}'
 
 
 class SlackConfig:
