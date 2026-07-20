@@ -11,6 +11,7 @@ from .linear_list_teams import linear_list_teams
 from .linear_update_issue import linear_update_issue
 from .list_findings import list_findings
 from .publish_review import publish_review
+from .refresh_github_token import refresh_github_token
 from .reply_to_finding_thread import reply_to_finding_thread
 from .request_pr_review import request_pr_review
 from .resolve_finding_thread import resolve_finding_thread
@@ -33,6 +34,7 @@ __all__ = [
     "linear_update_issue",
     "list_findings",
     "publish_review",
+    "refresh_github_token",
     "request_pr_review",
     "reply_to_finding_thread",
     "resolve_finding_thread",
