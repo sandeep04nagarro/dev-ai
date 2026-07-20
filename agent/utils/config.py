@@ -4,7 +4,7 @@ from pathlib import Path
 class LLMConfig:
     """LLM / Model configuration."""
     FALLBACK_MODEL_ID: str | None = None
-    BASE_URL: str = "https://opencode.ai/zen/go/v1"
+    BASE_URL: str = "https://openrouter.ai/api/v1"
 
 
 class SandboxConfig:
@@ -35,7 +35,7 @@ class JiraConfig:
     """Jira integration configuration."""
     BOT_NAME: str = "Open SWE Agent"
     DOMAIN: str = ""
-    PROJECT_TO_REPO: str = '{"JIRA_SPACE_ID":{"owner":"repo_owner_name","name":"repo_name"}}'
+    PROJECT_TO_REPO: str = '{"DT":{"owner":"DevAINag","name":"DSD-WHAdmin-TEST"}}'
 
 
 class SlackConfig:
