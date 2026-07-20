@@ -4,7 +4,7 @@ from pathlib import Path
 class LLMConfig:
     """LLM / Model configuration."""
     FALLBACK_MODEL_ID: str | None = None
-    BASE_URL: str = "https://opencode.ai/zen/go/v1"
+    BASE_URL: str = "https://openrouter.ai/api/v1"
 
 
 class SandboxConfig:
