@@ -12,6 +12,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
+from agent.dashboard.project_repos import (
+    ProjectRepoUpdate,
+    api_get_project_repos,
+    api_set_project_repos,
+)
+
 from .admin import is_admin
 from .enabled_repos import (
     list_enabled_review_repos,
@@ -41,7 +47,6 @@ from .profiles import (
     upsert_access_token_from_github_response,
     upsert_profile,
 )
-from agent.dashboard.project_repos import ProjectRepoUpdate, api_get_project_repos, api_set_project_repos
 from .review_style_jobs import (
     cancel_review_style_analysis,
     start_review_style_analysis,
@@ -96,14 +101,14 @@ _ADMIN_DEP = Depends(_admin_session)
 
 
 def _api_base_url() -> str:
-    v = os.environ.get("DASHBOARD_API_BASE_URL", "").rstrip("/")
+    v = os.environ.get("DASHBOARD_API_BASE_URL","").rstrip("/")
     if not v:
         raise HTTPException(500, "DASHBOARD_API_BASE_URL not configured")
     return v
 
 
 def _frontend_base_url() -> str:
-    v = os.environ.get("DASHBOARD_BASE_URL", "").rstrip("/")
+    v = os.environ.get("DASHBOARD_BASE_URL","").rstrip("/")
     if not v:
         raise HTTPException(500, "DASHBOARD_BASE_URL not configured")
     return v

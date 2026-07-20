@@ -16,6 +16,7 @@ import httpx
 import jwt
 from fastapi import HTTPException, Request
 
+
 logger = logging.getLogger(__name__)
 
 COOKIE_NAME = "osw_session"
@@ -43,10 +44,10 @@ def _allowed_redirect_origins() -> set[str]:
     targets — but nothing else.
     """
     origins: set[str] = set()
-    base = os.environ.get("DASHBOARD_BASE_URL", "").strip()
+    base = os.environ.get("DASHBOARD_BASE_URL","").strip()
     if base:
         origins.add(_origin_of(base))
-    for entry in os.environ.get("DASHBOARD_ALLOWED_ORIGINS", "").split(","):
+    for entry in os.environ.get("DASHBOARD_ALLOWED_ORIGINS","").split(","):
         entry = entry.strip()
         if entry:
             origins.add(_origin_of(entry))
@@ -68,7 +69,7 @@ def sanitize_redirect_to(redirect_to: str | None) -> str:
     explicitly allowed. This blocks the open-redirect / phishing primitive
     where an attacker drops their own URL into `?redirect_to=`.
     """
-    fallback = os.environ.get("DASHBOARD_BASE_URL", "").strip()
+    fallback = os.environ.get("DASHBOARD_BASE_URL","").strip()
     if not redirect_to:
         return fallback
     candidate_origin = _origin_of(redirect_to)

@@ -1,4 +1,3 @@
-import os
 from typing import Any
 
 from langchain.agents.middleware import ModelCallLimitMiddleware
@@ -22,9 +21,10 @@ from agent.middleware.sanitize_thinking_blocks import SanitizeThinkingBlocksMidd
 from agent.middleware.sanitize_tool_inputs import SanitizeToolInputsMiddleware
 from agent.middleware.ticket_token_usage import TicketTokenUsageMiddleware
 from agent.middleware.tool_error_handler import ToolErrorMiddleware
+from agent.utils.config import SandboxConfig, MiddlewareConfig
 
-MODEL_CALL_RECURSION_LIMIT = int(os.environ.get("MODEL_CALL_RECURSION_LIMIT",5_000)) or 5_000
-RECON_MODEL_CALL_RECURSION_LIMIT = int(os.environ.get("RECON_MODEL_CALL_RECURSION_LIMIT",5_000)) or 5_000
+MODEL_CALL_RECURSION_LIMIT = MiddlewareConfig.MODEL_CALL_RECURSION_LIMIT
+RECON_MODEL_CALL_RECURSION_LIMIT = MiddlewareConfig.RECON_MODEL_CALL_RECURSION_LIMIT
 
 CONSECUTIVE_FAILURE_THRESHOLDS: dict[str, int] = {
     "execute": 5,
@@ -92,7 +92,7 @@ def build_server_middleware_list(
         *fallback_middleware,
         SanitizeThinkingBlocksMiddleware(),
     ]
-    if os.environ.get("SANDBOX_TYPE", "langsmith") == "docker":
+    if SandboxConfig.TYPE == "docker":
         from .docker_cleanup import docker_cleanup_middleware
 
         middleware.append(docker_cleanup_middleware)

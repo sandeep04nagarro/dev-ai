@@ -3,21 +3,19 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
+import logging
 from typing import Any
 
 from langgraph_sdk import get_client
 from langgraph_sdk.client import LangGraphClient
 
-from .langsmith import create_langsmith_feedback, delete_langsmith_feedback
+# from .langsmith import create_langsmith_feedback, delete_langsmith_feedback
 from .slack import lookup_slack_run_mapping
 
 logger = logging.getLogger(__name__)
 
-LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL") or os.environ.get(
-    "LANGGRAPH_URL_PROD", "http://localhost:2024"
-)
+LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL","http://localhost:2024")
 
 FEEDBACK_REACTIONS: dict[str, float] = {
     "+1": 1.0,
@@ -189,20 +187,20 @@ async def process_slack_reaction(
         "user_id": user_id,
     }
     score = _score_reactions(active_reactions)
-    if score is None:
-        success = await asyncio.to_thread(delete_langsmith_feedback, run_id, key)
-    else:
-        success = await asyncio.to_thread(
-            create_langsmith_feedback,
-            run_id,
-            key,
-            score=score,
-            comment=f"Slack reaction feedback from user {user_id}",
-            source_info={**source_info, "reactions": sorted(active_reactions)},
-        )
+    # if score is None:
+    #     success = await asyncio.to_thread(delete_langsmith_feedback, run_id, key)
+    # else:
+    #     success = await asyncio.to_thread(
+    #         create_langsmith_feedback,
+    #         run_id,
+    #         key,
+    #         score=score,
+    #         comment=f"Slack reaction feedback from user {user_id}",
+    #         source_info={**source_info, "reactions": sorted(active_reactions)},
+    #     )
 
-    if success:
-        await _mark_event_processed(langgraph_client, channel_id, event_id)
+    # if success:
+    #     await _mark_event_processed(langgraph_client, channel_id, event_id)
 
 
 async def process_slack_reaction_added(event: dict[str, Any], event_id: str = "") -> None:

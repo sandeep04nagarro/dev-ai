@@ -59,6 +59,7 @@ from .tools import (
     update_finding,
     web_search,
 )
+from agent.utils.config import SandboxConfig
 from .utils.agents_md import fetch_agents_md
 from .utils.auth import resolve_github_token
 from .utils.github_token import get_github_token_from_thread
@@ -707,10 +708,9 @@ async def get_reviewer_agent(config: RunnableConfig) -> Pregel:
         subagent_effort = reasoning_effort
     else:
         model_id, reasoning_effort = await get_team_default_model("reviewer")
-        env_model_id = os.environ.get("LLM_MODEL_ID")
-        if env_model_id:
-            model_id = env_model_id
-            logger.info("Using LLM_MODEL_ID environment override: %s", model_id)
+        if os.environ.get("LLM_MODEL_ID","deepseek-v4-flash"):
+            model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
+            logger.info("Using LLM_MODEL_ID config override: %s", model_id)
 
         logger.info(
             "Using team default reviewer model: model=%s effort=%s",
@@ -719,8 +719,8 @@ async def get_reviewer_agent(config: RunnableConfig) -> Pregel:
         )
 
         subagent_model_id, subagent_effort = await get_team_default_subagent_model("reviewer")
-        if env_model_id:
-            subagent_model_id = env_model_id
+        if os.environ.get("LLM_MODEL_ID","deepseek-v4-flash"):
+            subagent_model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
             logger.info(
                 "Using LLM_MODEL_ID environment override for subagent: %s", subagent_model_id
             )
@@ -784,11 +784,7 @@ async def get_reviewer_agent(config: RunnableConfig) -> Pregel:
     del github_token
 
     # Determine GitHub auth prefix based on sandbox type
-    sandbox_type = os.getenv("SANDBOX_TYPE", "langsmith")
-    if sandbox_type == "langsmith":
-        gh_auth_prefix = "GH_TOKEN=dummy "
-    else:
-        gh_auth_prefix = ""
+    gh_auth_prefix = "GH_TOKEN=dummy " if SandboxConfig.TYPE == "langsmith" else ""
 
     system_prompt = _reviewer_system_prompt(
         f"{work_dir}/{repo_name}" if repo_name else work_dir,

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
+import logging
 import re
 import uuid
 from typing import Any
@@ -11,13 +11,11 @@ from langgraph_sdk import get_client
 from langgraph_sdk.client import LangGraphClient
 
 from ..reviewer_findings import list_findings
-from .langsmith import create_langsmith_feedback, delete_langsmith_feedback
+# from .langsmith import create_langsmith_feedback, delete_langsmith_feedback
 
 logger = logging.getLogger(__name__)
 
-LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL") or os.environ.get(
-    "LANGGRAPH_URL_PROD", "http://localhost:2024"
-)
+LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL","http://localhost:2024")
 
 GITHUB_FEEDBACK_REACTIONS: dict[str, float] = {
     "+1": 1.0,
@@ -210,19 +208,19 @@ async def process_github_reaction(
         "user_login": user_login,
     }
     score = _score_reactions(active_reactions)
-    if score is None:
-        success = await asyncio.to_thread(delete_langsmith_feedback, run_id, key)
-    else:
-        success = await asyncio.to_thread(
-            create_langsmith_feedback,
-            run_id,
-            key,
-            score=score,
-            comment=f"GitHub review reaction feedback from {user_login}",
-            source_info={**source_info, "reactions": sorted(active_reactions)},
-        )
-    if success:
-        await _mark_event_processed(langgraph_client, repo_key, delivery_id)
+    # if score is None:
+    #     success = await asyncio.to_thread(delete_langsmith_feedback, run_id, key)
+    # else:
+    #     success = await asyncio.to_thread(
+    #         create_langsmith_feedback,
+    #         run_id,
+    #         key,
+    #         score=score,
+    #         comment=f"GitHub review reaction feedback from {user_login}",
+    #         source_info={**source_info, "reactions": sorted(active_reactions)},
+    #     )
+    # if success:
+    #     await _mark_event_processed(langgraph_client, repo_key, delivery_id)
 
 
 async def process_github_reaction_added(payload: dict[str, Any], delivery_id: str = "") -> None:

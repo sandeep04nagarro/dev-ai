@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
@@ -13,6 +12,8 @@ from typing import Any
 from fastapi import HTTPException
 from langgraph_sdk.errors import InternalServerError
 from pydantic import BaseModel, Field
+
+from agent.utils.config import BuildConfig
 
 from ..utils.auth import persist_encrypted_github_token
 from ..utils.thread_ops import is_thread_active, langgraph_client, queue_message_for_thread
@@ -30,8 +31,9 @@ _DASHBOARD_STREAM_MODES: tuple[str, ...] = ("values", "updates", "messages-tuple
 
 
 def _agent_version_metadata() -> dict[str, str]:
-    revision = os.environ.get("LANGCHAIN_REVISION_ID")
-    return {"LANGSMITH_AGENT_VERSION": revision} if revision else {}
+    return (
+        {"AGENT_VERSION": BuildConfig.LANGCHAIN_REVISION_ID} if BuildConfig.LANGCHAIN_REVISION_ID else {}
+    )
 
 
 class ThreadCreateBody(BaseModel):
@@ -290,7 +292,8 @@ async def _start_agent_run(
     run_metadata = {
         **_agent_version_metadata(),
         "langfuse_session_id": thread_id,
-        "langfuse_user_id": configurable.get("user_email") or configurable.get("github_login", "unknown"),
+        "langfuse_user_id": configurable.get("user_email")
+        or configurable.get("github_login", "unknown"),
     }
     run = await client.runs.create(
         thread_id,
@@ -373,7 +376,8 @@ async def send_dashboard_message(
     run_metadata = {
         **_agent_version_metadata(),
         "langfuse_session_id": thread_id,
-        "langfuse_user_id": configurable.get("user_email") or configurable.get("github_login", "unknown"),
+        "langfuse_user_id": configurable.get("user_email")
+        or configurable.get("github_login", "unknown"),
     }
     run = await client.runs.create(
         thread_id,

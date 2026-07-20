@@ -1,6 +1,6 @@
-import os
-
 from deepagents.backends import LocalShellBackend
+
+from agent.utils.config import LocalSandboxConfig
 
 
 def create_local_sandbox(sandbox_id: str | None = None):
@@ -9,8 +9,7 @@ def create_local_sandbox(sandbox_id: str | None = None):
     WARNING: This runs commands directly on the host machine with no sandboxing.
     Only use for local development with human-in-the-loop enabled.
 
-    The root directory defaults to the current working directory and can be
-    overridden via the LOCAL_SANDBOX_ROOT_DIR environment variable.
+    The root directory can be set via LOCAL_SANDBOX_ROOT_DIR in config.py.
 
     Args:
         sandbox_id: Ignored for local sandboxes; accepted for interface compatibility.
@@ -18,7 +17,7 @@ def create_local_sandbox(sandbox_id: str | None = None):
     Returns:
         LocalShellBackend instance implementing SandboxBackendProtocol.
     """
-    root_dir = os.getenv("LOCAL_SANDBOX_ROOT_DIR", os.getcwd())
+    root_dir = LocalSandboxConfig.ROOT_DIR
 
     return LocalShellBackend(
         root_dir=root_dir,

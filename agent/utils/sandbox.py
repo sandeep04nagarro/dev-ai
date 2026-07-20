@@ -1,25 +1,24 @@
-import os
-
 from deepagents.backends.protocol import SandboxBackendProtocol
-
-from agent.integrations.daytona import create_daytona_sandbox
+import asyncio
+# from agent.integrations.daytona import create_daytona_sandbox
 from agent.integrations.docker import create_docker_sandbox
-from agent.integrations.langsmith import create_langsmith_sandbox
+# from agent.integrations.langsmith import create_langsmith_sandbox
 from agent.integrations.local import create_local_sandbox
-from agent.integrations.modal import create_modal_sandbox
-from agent.integrations.runloop import create_runloop_sandbox
+# from agent.integrations.modal import create_modal_sandbox
+# from agent.integrations.runloop import create_runloop_sandbox
+from agent.utils.config import SandboxConfig
 
 SANDBOX_FACTORIES = {
-    "langsmith": create_langsmith_sandbox,
-    "daytona": create_daytona_sandbox,
+    # "langsmith": create_langsmith_sandbox,
+    # "daytona": create_daytona_sandbox,
     "docker": create_docker_sandbox,
-    "modal": create_modal_sandbox,
-    "runloop": create_runloop_sandbox,
+    # "modal": create_modal_sandbox,
+    # "runloop": create_runloop_sandbox,
     "local": create_local_sandbox,
 }
 
 
-def create_sandbox(sandbox_id: str | None = None) -> SandboxBackendProtocol:
+async def create_sandbox(sandbox_id: str | None = None) -> SandboxBackendProtocol:
     """Create or reconnect to a sandbox using the configured provider.
 
     The provider is selected via the SANDBOX_TYPE environment variable.
@@ -31,23 +30,22 @@ def create_sandbox(sandbox_id: str | None = None) -> SandboxBackendProtocol:
     Returns:
         A sandbox backend implementing SandboxBackendProtocol.
     """
-    sandbox_type = os.getenv("SANDBOX_TYPE", "langsmith")
+    sandbox_type = SandboxConfig.TYPE
     factory = SANDBOX_FACTORIES.get(sandbox_type)
     if not factory:
         supported = ", ".join(sorted(SANDBOX_FACTORIES))
         raise ValueError(f"Invalid sandbox type: {sandbox_type}. Supported types: {supported}")
-    return factory(sandbox_id)
+    return await asyncio.to_thread(factory,sandbox_id)
 
 
-def validate_sandbox_startup_config() -> None:
-    """Validate the configured sandbox provider's env vars at server startup.
+# def validate_sandbox_startup_config() -> None:
+#     """Validate the configured sandbox provider's env vars at server startup.
 
-    Raises ValueError if the active provider's configuration is invalid.
-    Called from the FastAPI lifespan hook so errors surface at boot rather
-    than on the first sandbox creation.
-    """
-    sandbox_type = os.getenv("SANDBOX_TYPE", "langsmith")
-    if sandbox_type == "langsmith":
-        from agent.integrations.langsmith import LangSmithProvider
-
-        LangSmithProvider.validate_startup_config()
+#     Raises ValueError if the active provider's configuration is invalid.
+#     Called from the FastAPI lifespan hook so errors surface at boot rather
+#     than on the first sandbox creation.
+#     """
+#     sandbox_type = cfg.SANDBOX_TYPE
+#     if sandbox_type == "langsmith":
+#         from agent.integrations.langsmith import LangSmithProvider
+#         LangSmithProvider.validate_startup_config()

@@ -1,8 +1,8 @@
 """Docker sandbox backend integration.
-This is a light weight docker sandbox implementation. A custom sandbox was implemented using docker 
-as a sandbox provider. The Docker sandbox provider gives each coding-agent task its own isolated 
-Linux container. When a task starts, a fresh container is created. When the task finishes, the 
-container is destroyed. If the same task receives follow-up messages, the agent reconnects to the 
+This is a light weight docker sandbox implementation. A custom sandbox was implemented using docker
+as a sandbox provider. The Docker sandbox provider gives each coding-agent task its own isolated
+Linux container. When a task starts, a fresh container is created. When the task finishes, the
+container is destroyed. If the same task receives follow-up messages, the agent reconnects to the
 same container with all files intact."""
 
 from __future__ import annotations
@@ -22,15 +22,12 @@ from deepagents.backends.protocol import (
 from deepagents.backends.sandbox import BaseSandbox
 from langsmith.sandbox import SandboxClientError
 
+from agent.utils.config import DockerConfig
+
 logger = logging.getLogger(__name__)
 
-if os.getenv("DEBUG_MODE", "").lower() in ("on", "1", "true"):
+if os.environ.get("DEBUG_MODE",False):
     logger.setLevel(logging.DEBUG)
-
-DEFAULT_IMAGE = "open-swe-sandbox:latest"
-DEFAULT_MEM_LIMIT = "2g"
-DEFAULT_CPU_COUNT = "2"
-DEFAULT_NETWORK = "bridge"
 
 
 class DockerSandbox(BaseSandbox):
@@ -240,11 +237,11 @@ def create_docker_sandbox(sandbox_id: str | None = None) -> DockerSandbox:
             container.start()
         return DockerSandbox(container)
 
-    image = os.getenv("DOCKER_SANDBOX_IMAGE", DEFAULT_IMAGE)
-    mem_limit = os.getenv("DOCKER_SANDBOX_MEM_LIMIT", DEFAULT_MEM_LIMIT)
-    cpu_count = os.getenv("DOCKER_SANDBOX_CPU_COUNT", DEFAULT_CPU_COUNT)
-    network = os.getenv("DOCKER_SANDBOX_NETWORK", DEFAULT_NETWORK)
-    seccomp_profile = os.getenv("DOCKER_SANDBOX_SECCOMP_PROFILE", "")
+    image = DockerConfig.IMAGE
+    mem_limit = DockerConfig.MEM_LIMIT
+    cpu_count = DockerConfig.CPU_COUNT
+    network = DockerConfig.NETWORK
+    seccomp_profile = DockerConfig.SECCOMP_PROFILE
 
     security_opt: list[str] = []
     if seccomp_profile:

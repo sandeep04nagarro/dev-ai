@@ -4,9 +4,11 @@ import logging
 import os
 from typing import Any
 
+from agent.utils.config import ReconConfig
+
 logger = logging.getLogger(__name__)
 
-if os.getenv("DEBUG_MODE", "").lower() in ("on", "1", "true"):
+if os.environ.get("DEBUG_MODE",False):
     logger.setLevel(logging.DEBUG)
 
 
@@ -18,18 +20,21 @@ def run_layer_0(fields: dict[str, Any]) -> str | None:
         "heavy" if obviously complex,
         None if ambiguous (needs reconnaissance)
     """
-    logger.debug("run_layer_0 — labels=%s, issuetype=%s",
-                 fields.get("labels"), fields.get("issuetype", {}).get("name"))
+    logger.debug(
+        "run_layer_0 — labels=%s, issuetype=%s",
+        fields.get("labels"),
+        fields.get("issuetype", {}).get("name"),
+    )
     labels = {l.lower() for l in fields.get("labels", [])}
     issuetype = (fields.get("issuetype", {}) or {}).get("name", "").lower()
 
     light_signals = {"typo", "documentation", "docs", "chore"}
     heavy_signals = {"epic", "migration", "breaking-change", "refactor"}
-    
+
     if labels & light_signals:
         logger.debug("run_layer_0 → light (label match: %s)", labels & light_signals)
         return "light"
-    
+
     if labels & heavy_signals or issuetype == "epic":
         logger.debug("run_layer_0 → heavy (label/issuetype match)")
         return "heavy"
@@ -52,12 +57,14 @@ def ticket_hash(description: str, comments: list[dict[str, Any]]) -> str:
             return extract_adf_text(body)
         return str(body) if body else ""
 
-    content = (description or "") + "".join(
-        _body_text(c) for c in (comments or [])
-    )
+    content = (description or "") + "".join(_body_text(c) for c in (comments or []))
     h = hashlib.sha256(content.encode()).hexdigest()[:16]
-    logger.debug("ticket_hash — desc_len=%d, comment_count=%d → %s",
-                 len(description or ""), len(comments or []), h)
+    logger.debug(
+        "ticket_hash — desc_len=%d, comment_count=%d → %s",
+        len(description or ""),
+        len(comments or []),
+        h,
+    )
     return h
 
 
@@ -67,8 +74,8 @@ def parse_recon_output(state: dict[str, Any]) -> dict[str, Any]:
     Recon agent outputs a fenced JSON block as its final message.
     This function extracts and validates that structure.
     """
-    for key,value in state.items():
-        logger.debug("%s : %.50s",key,value)
+    for key, value in state.items():
+        logger.debug("%s : %.50s", key, value)
     values = state.get("values", {})
     messages = state.get("messages", [])
     logger.debug("parse_recon_output — messages_count=%d", len(messages))
@@ -87,8 +94,11 @@ def parse_recon_output(state: dict[str, Any]) -> dict[str, Any]:
                 try:
                     findings = json.loads(content[start:end].strip())
                     if isinstance(findings, dict) and "status" in findings:
-                        logger.debug("parse_recon_output → status=%s, scope=%s",
-                                     findings.get("status"), findings.get("scope"))
+                        logger.debug(
+                            "parse_recon_output → status=%s, scope=%s",
+                            findings.get("status"),
+                            findings.get("scope"),
+                        )
                         return findings
                     logger.warning("Recon output missing 'status' field")
                 except json.JSONDecodeError:
@@ -140,7 +150,7 @@ def decide_tier(recon_findings: dict[str, Any] | None, jira_fields: dict[str, An
         return "heavy"
 
     steps_used = recon_findings.get("steps_used", 0)
-    recon_step_limit = int(os.environ.get("RECON_STEP_LIMIT", "20"))
+    recon_step_limit = ReconConfig.STEP_LIMIT
     if steps_used >= recon_step_limit - 2:
         return "heavy"
 

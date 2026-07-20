@@ -85,8 +85,10 @@ class ModelFallbackMiddleware(AgentMiddleware):
         except Exception as exc:
             if not _should_fallback(exc):
                 raise
-            
-            sleep_time = 5 if isinstance(exc, (anthropic.RateLimitError, openai.RateLimitError)) else 2
+
+            sleep_time = (
+                5 if isinstance(exc, (anthropic.RateLimitError, openai.RateLimitError)) else 2
+            )
             logger.warning(
                 "Primary model failed (%s); retrying with fallback in %ds...",
                 type(exc).__name__,

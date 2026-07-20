@@ -5,15 +5,13 @@ from typing import Any
 from langgraph.config import get_config
 from langgraph_sdk import get_client
 
-from ..utils.slack import (
+from agent.utils.slack import (
     convert_mentions_to_slack_format,
     post_slack_thread_reply_with_ts,
     store_slack_message_run_mapping,
 )
 
-LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL") or os.environ.get(
-    "LANGGRAPH_URL_PROD", "http://localhost:2024"
-)
+LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL","http://localhost:2024")
 
 
 def slack_thread_reply(message: str) -> dict[str, Any]:

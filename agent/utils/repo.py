@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import os
 import re
 
-_DEFAULT_REPO_OWNER = os.environ.get("DEFAULT_REPO_OWNER", "langchain-ai")
+from agent.utils.config import RepoConfig
+
+_DEFAULT_REPO_OWNER = RepoConfig.DEFAULT_OWNER
 
 
 def extract_repo_from_text(text: str, default_owner: str | None = None) -> dict[str, str] | None:
@@ -41,33 +42,34 @@ def extract_repo_from_text(text: str, default_owner: str | None = None) -> dict[
         return {"owner": owner, "name": name}
     return None
 
+
 def extract_repos_from_text(text: str, default_owner: str | None = None) -> list[dict[str, str]]:
     """Extract multiple owner/name repo configs from text containing repos: syntax.
-    
+
     Example: ``repos: owner/name1, owner/name2``
     """
     if default_owner is None:
         default_owner = _DEFAULT_REPO_OWNER
-        
+
     repos: list[dict[str, str]] = []
-    
+
     if "repos:" in text or "repos " in text:
         match = re.search(r"repos[: ]([a-zA-Z0-9_.\-/, ]+)", text)
         if match:
             value = match.group(1).strip()
             # Split by comma or space
-            parts = [p.strip() for p in re.split(r'[, ]+', value) if p.strip()]
+            parts = [p.strip() for p in re.split(r"[, ]+", value) if p.strip()]
             for part in parts:
                 if "/" in part:
                     o, n = part.split("/", 1)
                     repos.append({"owner": o, "name": n})
                 else:
                     repos.append({"owner": default_owner, "name": part})
-                    
+
     # If no "repos:" syntax found, fallback to single "repo:"
     if not repos:
         single_repo = extract_repo_from_text(text, default_owner)
         if single_repo:
             repos.append(single_repo)
-            
+
     return repos

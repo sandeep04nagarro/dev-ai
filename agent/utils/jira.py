@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx
 
-from agent.utils.langsmith import get_langsmith_trace_url
+# from agent.utils.langsmith import get_langsmith_trace_url
 
 logger = logging.getLogger(__name__)
 
@@ -394,16 +394,16 @@ async def update_jira_comment(issue_id_or_key: str, comment_id: str, comment_bod
             return False
 
 
-async def post_jira_trace_comment(issue_id_or_key: str, thread_id: str) -> None:
-    """Post a trace URL comment on a Jira issue."""
-    trace_url = get_langsmith_trace_url(thread_id)
-    if trace_url:
-        await post_jira_comment(
-            issue_id_or_key,
-            f"On it! View trace: {trace_url}",
-        )
-    else:
-        await post_jira_comment(issue_id_or_key, "On it!")
+# async def post_jira_trace_comment(issue_id_or_key: str, thread_id: str) -> None:
+#     """Post a trace URL comment on a Jira issue."""
+#     trace_url = get_langsmith_trace_url(thread_id)
+#     if trace_url:
+#         await post_jira_comment(
+#             issue_id_or_key,
+#             f"On it! View trace: {trace_url}",
+#         )
+#     else:
+#         await post_jira_comment(issue_id_or_key, "On it!")
 
 
 def extract_adf_text(adf: dict | str | None) -> str:

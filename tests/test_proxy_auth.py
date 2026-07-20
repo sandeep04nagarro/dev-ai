@@ -149,7 +149,7 @@ class TestCreateSandboxWithProxy:
         with (
             patch("agent.server.create_sandbox") as mock_create,
             patch("agent.server._configure_github_proxy") as mock_proxy,
-            patch.dict("os.environ", {"SANDBOX_TYPE": "daytona"}),
+            patch.dict("os.environ", {"SANDBOX_TYPE": "docker"}),
         ):
             mock_create.return_value = MagicMock(id="sandbox-456")
 
