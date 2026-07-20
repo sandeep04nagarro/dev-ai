@@ -66,7 +66,7 @@ from .tools import (
 )
 from .utils.auth import resolve_github_token
 from .utils.authorship import resolve_triggering_user_identity
-# from .utils.github_app import get_github_app_installation_token
+from .utils.github_app import get_github_app_installation_token
 from .utils.model import (
     DEFAULT_LLM_REASONING,
     ModelKwargs,
@@ -76,6 +76,7 @@ from .utils.model import (
 )
 from .utils.sandbox import create_sandbox
 from .utils.sandbox_paths import aresolve_sandbox_work_dir
+from .utils.token_profiler import PhaseTokenProfilerCallback
 from .utils.tracing import get_langfuse_handler
 from .utils.tracing_diagnostics import _AttrsStore
 
@@ -176,12 +177,28 @@ from agent.utils.sandbox_state import (
 async def _configure_git_identity(sandbox_backend: SandboxBackendProtocol) -> None:
     await asyncio.to_thread(
         sandbox_backend.execute,
-        "git config --global user.name 'open-swe[bot]' && "
+        "git config --global user.name 'dev-agent[bot]' && "
         "git config --global user.email 'open-swe@users.noreply.github.com'" 
         # && "
     #     "git config --global credential.helper "
     #     "'!f() { echo \"username=x-access-token\"; echo \"password=$GH_TOKEN\"; }; f'",
     )
+
+
+async def _configure_github_auth_in_sandbox(sandbox_backend: SandboxBackendProtocol) -> None:
+    """Configure gh CLI authentication inside the sandbox."""
+    installation_token = await get_github_app_installation_token()
+    if installation_token:
+        logger.info("Configuring GitHub App authentication in sandbox %s", sandbox_backend.id)
+        await asyncio.to_thread(
+            sandbox_backend.execute,
+            f"printf '%s' '{installation_token}' | gh auth login --with-token",
+        )
+    else:
+        logger.warning(
+            "GitHub App is NOT configured. Falling back to GITHUB_TOKEN PAT (if available) for sandbox %s",
+            sandbox_backend.id,
+        )
 
 
 async def _recreate_sandbox(thread_id: str) -> SandboxBackendProtocol:
@@ -340,6 +357,7 @@ async def ensure_sandbox_for_thread(thread_id: str) -> SandboxBackendProtocol:
     # deploys reject commits whose author email can't be resolved to a GitHub
     # account.
     await _configure_git_identity(sandbox_backend)
+    await _configure_github_auth_in_sandbox(sandbox_backend)
 
     return sandbox_backend
 
@@ -399,13 +417,14 @@ async def get_agent(config: RunnableConfig) -> Pregel:
         return _get_cached_sandbox_backend(_thread_id)
 
     model_id, profile_effort = await get_team_default_model("agent")
-    if os.environ.get("LLM_MODEL_ID","deepseek-v4-flash"):
+    env_model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
+    if env_model_id:
         model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
         logger.info("Using LLM_MODEL_ID config override: %s", model_id)
 
     logger.info("Using team default agent model: model=%s effort=%s", model_id, profile_effort)
     subagent_model_id, subagent_effort = await get_team_default_subagent_model("agent")
-    if os.environ.get("LLM_MODEL_ID","deepseek-v4-flash"):
+    if env_model_id:
         subagent_model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
         logger.info("Using LLM_MODEL_ID environment override for subagent: %s", subagent_model_id)
 
@@ -421,7 +440,7 @@ async def get_agent(config: RunnableConfig) -> Pregel:
         profile = await load_profile(profile_login)
         if profile:
             overridden_model, overridden_effort = normalize_profile_overrides(profile)
-            if overridden_model:
+            if overridden_model and not env_model_id:
                 logger.info(
                     "Applying dashboard profile override for %s: model=%s effort=%s",
                     profile_login,
@@ -435,7 +454,7 @@ async def get_agent(config: RunnableConfig) -> Pregel:
             overridden_subagent_model, overridden_subagent_effort = (
                 normalize_profile_subagent_overrides(profile)
             )
-            if overridden_subagent_model:
+            if overridden_subagent_model and not env_model_id:
                 logger.info(
                     "Applying dashboard profile subagent override for %s: model=%s effort=%s",
                     profile_login,
@@ -449,7 +468,8 @@ async def get_agent(config: RunnableConfig) -> Pregel:
     per_thread_model = configurable.get("agent_model_id")
     per_thread_effort = configurable.get("agent_effort")
     if (
-        isinstance(per_thread_model, str)
+        not env_model_id
+        and isinstance(per_thread_model, str)
         and per_thread_model in SUPPORTED_MODEL_IDS
         and isinstance(per_thread_effort, str)
         and model_supports_effort(per_thread_model, per_thread_effort)
@@ -506,6 +526,32 @@ async def get_agent(config: RunnableConfig) -> Pregel:
             config["callbacks"] = [langfuse_handler]
         elif isinstance(callbacks, list):
             callbacks.append(langfuse_handler)
+
+    # ------------------------------------------------------------------
+    # Phase-based token profiling callback
+    # ------------------------------------------------------------------
+    # Resolve the issue key from Jira or Linear configurable so the
+    # PhaseTokenLedger can be keyed correctly.  We attempt both sources.
+    _profiling_issue_key = (
+        configurable.get("jira_issue", {}).get("key")
+        or configurable.get("linear_issue", {}).get("linear_issue_number")
+        or thread_id
+    )
+    _phase_callback = PhaseTokenProfilerCallback(
+        issue_key=str(_profiling_issue_key),
+        thread_id=str(thread_id),
+        is_reviewer=False,
+    )
+    _existing_callbacks = config.get("callbacks")
+    if _existing_callbacks is None:
+        config["callbacks"] = [_phase_callback]
+    elif isinstance(_existing_callbacks, list):
+        _existing_callbacks.append(_phase_callback)
+    logger.info(
+        "PhaseTokenProfilerCallback injected for issue=%s thread=%s",
+        _profiling_issue_key,
+        thread_id,
+    )
 
     metadata = config.get("metadata", {}) or {}
     _AttrsStore.set(

@@ -10,6 +10,7 @@ from langchain_core.messages import SystemMessage
 from agent.utils.config import MultiRepoConfig
 from agent.utils.model import make_model
 from agent.utils.multi_repo_registry import RepoConfig, get_project_repos
+from agent.utils.token_profiler import record_repo_selection_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +106,8 @@ async def select_repos_for_ticket(
         messages = [SystemMessage(content=system_prompt)]
 
         response = await model.ainvoke(messages)
+        # Record token usage for the multi_repo_selection phase.
+        record_repo_selection_tokens(issue_key, response)
         content = str(response.content).strip()
 
         # Parse JSON
