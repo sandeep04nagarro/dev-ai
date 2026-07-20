@@ -1806,7 +1806,7 @@ async def process_jira_issue(
     )
 
     recon_findings = None
-    if tier is None and os.environ.get("RECON_ENABLED", False):
+    if tier is None and os.environ.get("RECON_ENABLED", False)=="true":
         logger.debug("Starting recon flow for %s — tier=ambiguous", issue_key)
         # Check for existing recon findings via thread metadata
         existing_findings, existing_ticket_hash = None, None
