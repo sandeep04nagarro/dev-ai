@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import uuid
+
 # from collections.abc import AsyncIterator
 # from contextlib import asynccontextmanager
 from typing import Any
@@ -18,12 +19,19 @@ from langchain_core.messages.content import create_text_block
 from langgraph_sdk import get_client
 from langgraph_sdk.client import LangGraphClient
 
-from agent.utils.config import SandboxConfig, JiraConfig, SlackConfig, RepoConfig, ReconConfig, BuildConfig
 from agent.utils.complexity_classifier import (
     decide_tier,
     parse_recon_output,
     run_layer_0,
     ticket_hash,
+)
+from agent.utils.config import (
+    BuildConfig,
+    JiraConfig,
+    ReconConfig,
+    RepoConfig,
+    SandboxConfig,
+    SlackConfig,
 )
 from agent.utils.jira import (
     extract_adf_text,
@@ -38,7 +46,7 @@ from .dashboard.agent_overrides import (
     get_profile_default_repo,
     resolve_login_from_email,
 )
-from .dashboard.enabled_repos import is_review_repo_enabled, list_enabled_review_repos
+from .dashboard.enabled_repos import is_review_repo_enabled, list_enabled_review_repos  # noqa: F401
 from .dashboard.profiles import get_profile
 from .dashboard.team_settings import get_team_settings
 from .reviewer_findings import (
@@ -62,6 +70,7 @@ from .utils.auth import (
     resolve_github_token,
 )
 from .utils.authorship import OPEN_SWE_BOT_NAME
+
 # from .utils.comments import get_recent_comments
 from .utils.github_app import (
     get_github_app_installation_token,
@@ -115,7 +124,7 @@ from .utils.thread_ops import is_thread_active, queue_message_for_thread
 
 logger = logging.getLogger(__name__)
 
-if os.environ.get("DEBUG_MODE",False):
+if os.environ.get("DEBUG_MODE", False):
     logger.setLevel(logging.DEBUG)
 
 
@@ -127,10 +136,10 @@ if os.environ.get("DEBUG_MODE",False):
 
 app = FastAPI(
     # lifespan=lifespan
-    )
+)
 
 DASHBOARD_ALLOWED_ORIGINS: list[str] = [
-    o.strip() for o in os.environ.get("DASHBOARD_ALLOWED_ORIGINS","").split(",") if o.strip()
+    o.strip() for o in os.environ.get("DASHBOARD_ALLOWED_ORIGINS", "").split(",") if o.strip()
 ]
 if DASHBOARD_ALLOWED_ORIGINS:
     app.add_middleware(
@@ -155,10 +164,13 @@ DEFAULT_REPO_NAME = RepoConfig.DEFAULT_NAME
 SLACK_REPO_OWNER = RepoConfig.SLACK_OWNER or RepoConfig.DEFAULT_OWNER
 SLACK_REPO_NAME = RepoConfig.SLACK_NAME or RepoConfig.DEFAULT_NAME
 
-LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL","http://localhost:2024")
+LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL", "http://localhost:2024")
+REVIEWER_ENABLED = os.environ.get("REVIEWER_ENABLED", "")
 
 _AGENT_VERSION_METADATA: dict[str, str] = (
-    {"AGENT_VERSION": BuildConfig.LANGCHAIN_REVISION_ID} if BuildConfig.LANGCHAIN_REVISION_ID else {}
+    {"AGENT_VERSION": BuildConfig.LANGCHAIN_REVISION_ID}
+    if BuildConfig.LANGCHAIN_REVISION_ID
+    else {}
 )
 
 ALLOWED_GITHUB_ORGS: frozenset[str] = frozenset(
@@ -412,15 +424,21 @@ def _is_repo_allowed(repo_config: dict[str, str]) -> bool:
 
 
 async def _is_repo_enabled_for_review(repo_config: dict[str, str]) -> bool:
-    """Check the dashboard opt-in list for reviewer-agent entrypoints.
+    # """Check the dashboard opt-in list for reviewer-agent entrypoints.
 
-    The opt-in list is empty by default. If empty, we fall back to the
-    standard env-var allowlist (_is_repo_allowed). Once an admin enables
-    at least one repo in the dashboard, that list becomes the source of truth.
+    # The opt-in list is empty by default. If empty, we fall back to the
+    # standard env-var allowlist (_is_repo_allowed). Once an admin enables
+    # at least one repo in the dashboard, that list becomes the source of truth.
+    # """
+    """Check the LangGraph store opt-in list for reviewer-agent entrypoints.
+
+    Only repos stored in the ``enabled_review_repos`` namespace are allowed.
+    There is no env-var fallback — the store is the single source of truth.
     """
     enabled_repos = await list_enabled_review_repos()
     if not enabled_repos:
-        return _is_repo_allowed(repo_config)
+        # return _is_repo_allowed(repo_config)
+        return False
 
     owner = repo_config.get("owner", "").lower()
     name = repo_config.get("name", "").lower()
@@ -965,7 +983,8 @@ async def process_slack_mention(event_data: dict[str, Any], repo_config: dict[st
     run_metadata = {
         **_AGENT_VERSION_METADATA,
         "langfuse_session_id": thread_id,
-        "langfuse_user_id": configurable.get("user_email") or configurable.get("github_login", "unknown"),
+        "langfuse_user_id": configurable.get("user_email")
+        or configurable.get("github_login", "unknown"),
     }
     run = await langgraph_client.runs.create(
         thread_id,
@@ -1373,7 +1392,7 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
         if "@dev-agent" not in comment_body.lower():
             logger.debug("Ignoring Jira webhook: comment doesn't mention @dev-agent")
             return {"status": "ignored", "reason": "Comment doesn't mention @dev-agent"}
-        
+
         author_name = author.get("displayName", "User")
         author_email = author.get("emailAddress", "")
 
@@ -1615,7 +1634,7 @@ def build_jira_issue_prompt(
             # if the author for this comment is our agent, then we can skip it.
             if author == JIRA_BOT_NAME:
                 continue
-                
+
             body = comment.get("body")
             extracted_body = extract_adf_text(body)
 
@@ -1696,7 +1715,7 @@ def build_recon_jira_issue_prompt(
             # if the author for this comment is our agent, then we can skip it.
             if author == JIRA_BOT_NAME:
                 continue
-                
+
             body = comment.get("body")
             extracted_body = extract_adf_text(body)
             if not extracted_body:
@@ -1802,11 +1821,14 @@ async def process_jira_issue(
     # Layer 0: Static tier check
     tier = run_layer_0(fields)
     logger.debug(
-        "Layer 0 tier=%s, RECON_ENABLED=%s, issue_key=%s", tier, os.environ.get("RECON_ENABLED", False), issue_key
+        "Layer 0 tier=%s, RECON_ENABLED=%s, issue_key=%s",
+        tier,
+        os.environ.get("RECON_ENABLED", False),
+        issue_key,
     )
 
     recon_findings = None
-    if tier is None and os.environ.get("RECON_ENABLED", False)=="true":
+    if tier is None and os.environ.get("RECON_ENABLED", False) == "true":
         logger.debug("Starting recon flow for %s — tier=ambiguous", issue_key)
         # Check for existing recon findings via thread metadata
         existing_findings, existing_ticket_hash = None, None
@@ -1874,7 +1896,7 @@ If these findings still apply to this ticket, confirm reuse and exit.
                 "Invoking recon agent — thread_id=%s, step_limit=%d, model=%s",
                 thread_id,
                 recon_step_limit,
-                os.environ.get("RECON_MODEL_ID","deepseek-v4-flash"),
+                os.environ.get("RECON_MODEL_ID", "deepseek-v4-flash"),
             )
             recon_state = await langgraph_client.runs.wait(
                 thread_id,
@@ -1937,7 +1959,7 @@ If these findings still apply to this ticket, confirm reuse and exit.
 
     # Set model based on tier (only when explicitly light)
     if tier == "light":
-        configurable["agent_model_id"] = os.environ.get("RECON_MODEL_ID","deepseek-v4-flash")
+        configurable["agent_model_id"] = os.environ.get("RECON_MODEL_ID", "deepseek-v4-flash")
         configurable["agent_effort"] = "low"
         logger.debug("Set light model: %s", configurable["agent_model_id"])
 
@@ -2860,26 +2882,28 @@ async def process_github_pr_comment(payload: dict[str, Any], event_type: str) ->
                 logger.warning("Failed to persist branch_name metadata for thread %s", thread_id)
 
         run_metadata = {
-        **_AGENT_VERSION_METADATA,
-        "langfuse_session_id": thread_id,  # noqa: F821
-        "langfuse_user_id": github_login or "unknown",
-    }
-    config={  # noqa: F821
-            "configurable": {
-                "source": "github",
-                "github_login": github_login,
-                "github_user_id": github_user_id,
-                "repo": repo_config,
-                "pr_number": pr_number,
-            },
-            "metadata": run_metadata,
+            **_AGENT_VERSION_METADATA,
+            "langfuse_session_id": thread_id,  # noqa: F821
+            "langfuse_user_id": github_login or "unknown",
         }
+    config = {  # noqa: F821
+        "configurable": {
+            "source": "github",
+            "github_login": github_login,
+            "github_user_id": github_user_id,
+            "repo": repo_config,
+            "pr_number": pr_number,
+        },
+        "metadata": run_metadata,
+    }
     comment = payload.get("comment") or payload.get("review", {})
     is_review_request, _pr_url_override = parse_github_review_command(comment.get("body") or "")
-    email = GITHUB_USER_EMAIL_MAP.get(github_login, "")
-    if email:
-        github_token = await _get_or_resolve_thread_github_token(thread_id, config)
-    elif is_review_request:
+
+    # email = GITHUB_USER_EMAIL_MAP.get(github_login, "")
+    # if email:
+    #     github_token = await _get_or_resolve_thread_github_token(thread_id, config)
+
+    if is_review_request:
         github_token, expires_at = await get_github_app_installation_token_with_expiry()
         if github_token:
             try:
@@ -2889,7 +2913,7 @@ async def process_github_pr_comment(payload: dict[str, Any], event_type: str) ->
                     "Could not persist bot token for PR review request thread %s", thread_id
                 )
     else:
-        logger.warning("No email mapping for GitHub user '%s', skipping", github_login)
+        logger.warning("Failed to initiate PR review for '%s', skipping", github_login)
         return
 
     if not github_token:
@@ -3190,7 +3214,7 @@ async def process_github_issue(payload: dict[str, Any], event_type: str) -> None
     }
 
     config = {"configurable": configurable, "metadata": run_metadata}
-    
+
     existing_thread = await _thread_exists(thread_id)
     github_token = await _get_or_resolve_thread_github_token(thread_id, config)
     app_token = await get_github_app_installation_token()
@@ -3322,6 +3346,9 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
     is_pull_request_event = event_type == "pull_request"
 
     if is_pull_request_event:
+        if not REVIEWER_ENABLED == "true":
+            logger.info('Ignoring: REVIEWER_ENABLED env var not set to "true"')
+            return {"status": "ignored", "reason": 'REVIEWER_ENABLED env var not set to "true"'}
         action = payload.get("action", "")
         if action not in _SUPPORTED_GH_PULL_REQUEST_ACTIONS:
             logger.info("Ignoring unsupported GitHub pull_request action: %s", action)
@@ -3329,14 +3356,22 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
                 "status": "ignored",
                 "reason": f"Unsupported GitHub pull_request action: {action}",
             }
+        """
+        Checks For Reviewer actions. If the PR is opened or any Commit is pushed
+        The reviewer agent is automatically triggered. To enable repositories for review,
+        store them in the ENABLED_REVIEW_REPOS_NAMESPACE, ENABLED_REVIEW_REPOS_KEY attributes in the langgraph client store.
+        """
+
         if action in _GH_PR_WATCH_TOGGLE_ACTIONS:
             if not await _is_repo_enabled_for_review(webhook_repo_config):
+                logger.info("Ignoring: Repository not enabled for review")
                 return {"status": "ignored", "reason": "Repository not enabled for review"}
             logger.info("Accepted GitHub PR %s webhook, scheduling reviewer watch update", action)
             background_tasks.add_task(process_github_pr_close, payload)
             return {"status": "accepted", "message": f"Processing PR {action} for reviewer watch"}
         if action in _GH_PR_FIRST_REVIEW_ACTIONS:
             if not await _is_repo_enabled_for_review(webhook_repo_config):
+                logger.info("Ignoring: Repository not enabled for review")
                 return {"status": "ignored", "reason": "Repository not enabled for review"}
             gate_rejection = await _enforce_public_repo_org_gate(payload, "pull_request")
             if gate_rejection is not None:
@@ -3344,6 +3379,7 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
             logger.info("Accepted GitHub PR %s webhook, scheduling auto-review task", action)
             background_tasks.add_task(process_github_pr_ready, payload)
             return {"status": "accepted", "message": f"Processing PR {action} for auto-review"}
+
         if not _is_open_swe_reviewer_request(payload):
             logger.info("Ignoring PR review request for a different reviewer")
             return {"status": "ignored", "reason": "Review request is not for open-swe bot"}
@@ -3364,7 +3400,11 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
         return {"status": "accepted", "message": "Processing GitHub PR review request"}
 
     if event_type == "push":
+        if not REVIEWER_ENABLED == "true":
+            logger.info('Ignoring: REVIEWER_ENABLED env var not set to "true"')
+            return {"status": "ignored", "reason": 'REVIEWER_ENABLED env var not set to "true"'}
         if not await _is_repo_enabled_for_review(webhook_repo_config):
+            logger.info("Ignoring: Repository not enabled for review")
             return {"status": "ignored", "reason": "Repository not enabled for review"}
         logger.info("Accepted GitHub push webhook, scheduling reviewer watch evaluation")
         background_tasks.add_task(process_github_push_event, payload)
@@ -3392,7 +3432,10 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
         issue_text = f"{issue.get('title', '')}\n\n{issue.get('body', '')}".lower()
         if not any(tag in issue_text for tag in DEV_AGENT_TAGS):
             logger.info("Ignoring issue that does not mention @dev-agent or @dev-agent")
-            return {"status": "ignored", "reason": "Issue does not mention @dev-agent or @dev-agent"}
+            return {
+                "status": "ignored",
+                "reason": "Issue does not mention @dev-agent or @dev-agent",
+            }
 
         gate_rejection = await _enforce_public_repo_org_gate(payload, event_type)
         if gate_rejection is not None:
@@ -3417,6 +3460,9 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
         event_type == "pull_request_review_comment"
         and _review_comment_reply_parent_id(payload) is not None
     ):
+        if not REVIEWER_ENABLED == "true":
+            logger.info('Ignoring: REVIEWER_ENABLED env var not set to "true"')
+            return {"status": "ignored", "reason": 'REVIEWER_ENABLED env var not set to "true"'}
         if not await _is_repo_enabled_for_review(webhook_repo_config):
             return {"status": "ignored", "reason": "Repository not enabled for review"}
         gate_rejection = await _enforce_public_repo_org_gate(payload, event_type)
@@ -3438,10 +3484,13 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
         return gate_rejection
 
     logger.info("Accepted GitHub webhook: event=%s, scheduling background task", event_type)
-    if is_pull_request_comment or event_type in {
-        "pull_request_review_comment",
-        "pull_request_review",
-    }:
+
+    # if is_pull_request_comment or event_type in {
+    #     "pull_request_review_comment",
+    #     "pull_request_review",
+    # }:
+
+    if event_type == "pull_request_review":
         background_tasks.add_task(process_github_pr_comment, payload, event_type)
         return {"status": "accepted", "message": f"Processing {event_type} event"}
 
