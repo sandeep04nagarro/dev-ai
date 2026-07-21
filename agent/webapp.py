@@ -166,6 +166,7 @@ SLACK_REPO_NAME = RepoConfig.SLACK_NAME or RepoConfig.DEFAULT_NAME
 
 LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL", "http://localhost:2024")
 REVIEWER_ENABLED = os.environ.get("REVIEWER_ENABLED", "")
+GITHUB_APP_NAME = RepoConfig.GITHUB_APP_NAME.strip()
 
 _AGENT_VERSION_METADATA: dict[str, str] = (
     {"AGENT_VERSION": BuildConfig.LANGCHAIN_REVISION_ID}
@@ -2897,24 +2898,33 @@ async def process_github_pr_comment(payload: dict[str, Any], event_type: str) ->
         "metadata": run_metadata,
     }
     comment = payload.get("comment") or payload.get("review", {})
-    is_review_request, _pr_url_override = parse_github_review_command(comment.get("body") or "")
+    # is_review_request, _pr_url_override = parse_github_review_command(comment.get("body") or "")
 
     # email = GITHUB_USER_EMAIL_MAP.get(github_login, "")
     # if email:
     #     github_token = await _get_or_resolve_thread_github_token(thread_id, config)
 
-    if is_review_request:
-        github_token, expires_at = await get_github_app_installation_token_with_expiry()
-        if github_token:
-            try:
-                await persist_encrypted_github_token(thread_id, github_token, expires_at=expires_at)
-            except Exception:
-                logger.warning(
-                    "Could not persist bot token for PR review request thread %s", thread_id
-                )
-    else:
-        logger.warning("Failed to initiate PR review for '%s', skipping", github_login)
-        return
+    # if is_review_request:
+    #     github_token, expires_at = await get_github_app_installation_token_with_expiry()
+    #     if github_token:
+    #         try:
+    #             await persist_encrypted_github_token(thread_id, github_token, expires_at=expires_at)
+    #         except Exception:
+    #             logger.warning(
+    #                 "Could not persist bot token for PR review request thread %s", thread_id
+    #             )
+    # else:
+    #     logger.warning("Failed to initiate PR review for '%s', skipping", github_login)
+    #     return
+
+    github_token, expires_at = await get_github_app_installation_token_with_expiry()
+    if github_token:
+        try:
+            await persist_encrypted_github_token(thread_id, github_token, expires_at=expires_at)
+        except Exception:
+            logger.warning(
+                "Could not persist bot token for PR review request thread %s", thread_id
+            )
 
     if not github_token:
         logger.warning("No GitHub token for thread %s, skipping", thread_id)
@@ -3340,6 +3350,8 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
     }
 
     issue = payload.get("issue", {})
+    pull_request = payload.get("pull_request", {})
+    pr_author = (pull_request.get("user") or {}).get("login", "")
     is_pull_request_comment = bool(event_type == "issue_comment" and issue.get("pull_request"))
     is_issue_comment = bool(event_type == "issue_comment" and not issue.get("pull_request"))
     is_issue_event = event_type == "issues"
@@ -3349,6 +3361,13 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
         if not REVIEWER_ENABLED == "true":
             logger.info('Ignoring: REVIEWER_ENABLED env var not set to "true"')
             return {"status": "ignored", "reason": 'REVIEWER_ENABLED env var not set to "true"'}
+        if GITHUB_APP_NAME and pr_author.lower() != GITHUB_APP_NAME.lower():
+            logger.info(
+                "Ignoring: PR not authored by %s (author=%s)",
+                GITHUB_APP_NAME,
+                pr_author,
+            )
+            return {"status": "ignored", "reason": f"PR not authored by {GITHUB_APP_NAME}"}
         action = payload.get("action", "")
         if action not in _SUPPORTED_GH_PULL_REQUEST_ACTIONS:
             logger.info("Ignoring unsupported GitHub pull_request action: %s", action)
@@ -3356,11 +3375,6 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
                 "status": "ignored",
                 "reason": f"Unsupported GitHub pull_request action: {action}",
             }
-        """
-        Checks For Reviewer actions. If the PR is opened or any Commit is pushed
-        The reviewer agent is automatically triggered. To enable repositories for review,
-        store them in the ENABLED_REVIEW_REPOS_NAMESPACE, ENABLED_REVIEW_REPOS_KEY attributes in the langgraph client store.
-        """
 
         if action in _GH_PR_WATCH_TOGGLE_ACTIONS:
             if not await _is_repo_enabled_for_review(webhook_repo_config):
@@ -3463,6 +3477,13 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
         if not REVIEWER_ENABLED == "true":
             logger.info('Ignoring: REVIEWER_ENABLED env var not set to "true"')
             return {"status": "ignored", "reason": 'REVIEWER_ENABLED env var not set to "true"'}
+        if GITHUB_APP_NAME and pr_author.lower() != GITHUB_APP_NAME.lower():
+            logger.info(
+                "Ignoring: PR not authored by %s (author=%s)",
+                GITHUB_APP_NAME,
+                pr_author,
+            )
+            return {"status": "ignored", "reason": f"PR not authored by {GITHUB_APP_NAME}"}
         if not await _is_repo_enabled_for_review(webhook_repo_config):
             return {"status": "ignored", "reason": "Repository not enabled for review"}
         gate_rejection = await _enforce_public_repo_org_gate(payload, event_type)
@@ -3471,13 +3492,13 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
         background_tasks.add_task(process_github_review_finding_reply, payload)
         return {"status": "accepted", "message": "Processing review finding reply"}
 
-    if not any(tag in comment_body.lower() for tag in DEV_AGENT_TAGS):
-        logger.debug(
-            "Ignoring GitHub %s%s that does not mention @dev-agent",
-            event_type,
-            f" action={action}" if action else "",
-        )
-        return {"status": "ignored", "reason": "Comment does not mention @dev-agent or "}
+    # if not any(tag in comment_body.lower() for tag in DEV_AGENT_TAGS):
+    #     logger.debug(
+    #         "Ignoring GitHub %s%s that does not mention @dev-agent",
+    #         event_type,
+    #         f" action={action}" if action else "",
+    #     )
+    #     return {"status": "ignored", "reason": "Comment does not mention @dev-agent or "}
 
     gate_rejection = await _enforce_public_repo_org_gate(payload, event_type)
     if gate_rejection is not None:
@@ -3491,6 +3512,13 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
     # }:
 
     if event_type == "pull_request_review":
+        if GITHUB_APP_NAME and pr_author.lower() != GITHUB_APP_NAME.lower():
+            logger.info(
+                "Ignoring: PR not authored by %s (author=%s)",
+                GITHUB_APP_NAME,
+                pr_author,
+            )
+            return {"status": "ignored", "reason": f"PR not authored by {GITHUB_APP_NAME}"}
         background_tasks.add_task(process_github_pr_comment, payload, event_type)
         return {"status": "accepted", "message": f"Processing {event_type} event"}
 
