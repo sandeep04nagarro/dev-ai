@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 
 from agent.utils.config import SandboxConfig
+
 from .github_token import GitHubAuthError
 from .github_user_email_map import GITHUB_USER_EMAIL_MAP
 
@@ -88,11 +89,12 @@ def parse_github_review_command(body: str) -> tuple[bool, str | None]:
     """
     if not body:
         return False, None
-    stripped = _DEV_AGENT_MENTION_RE.sub("", body).strip()
-    match = _REVIEW_COMMAND_RE.match(stripped)
-    if not match:
-        return False, None
-    return True, match.group(1) or None
+    # stripped = _DEV_AGENT_MENTION_RE.sub("", body).strip()
+    # match = _REVIEW_COMMAND_RE.match(stripped)
+    # if not match:
+    #     return False, None
+    # return True, match.group(1) or None
+    return True, None
 
 
 def sanitize_github_comment_body(body: str) -> str:
