@@ -74,7 +74,7 @@ class TicketTokenUsageMiddleware(AgentMiddleware):
 
     def __init__(self) -> None:
         """Initialise all usage counters to zero for a fresh run."""
-        self._run_accum: dict[str, int] = {"prompt": 0, "completion": 0, "total": 0}
+        self._run_accum: dict[str, int] = {"prompt": 0, "cache_read": 0, "completion": 0, "total": 0}
 
     def after_model(self, state: AgentState, runtime: Runtime) -> dict[str, Any] | None:
         """Accumulate token usage from the latest model response (sync path)."""
@@ -173,10 +173,12 @@ class TicketTokenUsageMiddleware(AgentMiddleware):
             # Merge: take whichever is larger between the ledger and middleware
             # accumulator for each bucket (avoids double-counting).
             merged_prompt = max(self._run_accum["prompt"], ledger_totals["prompt"])
+            merged_cache_read = max(self._run_accum.get("cache_read", 0), ledger_totals.get("cache_read", 0))
             merged_completion = max(self._run_accum["completion"], ledger_totals["completion"])
             merged_total = merged_prompt + merged_completion
             run_total = {
                 "prompt": merged_prompt,
+                "cache_read": merged_cache_read,
                 "completion": merged_completion,
                 "total": merged_total,
             }
@@ -188,6 +190,7 @@ class TicketTokenUsageMiddleware(AgentMiddleware):
         ticket_total_prior = _read_ticket_total(metadata)
         new_total = {
             "prompt": ticket_total_prior["prompt"] + run_total["prompt"],
+            "cache_read": ticket_total_prior.get("cache_read", 0) + run_total.get("cache_read", 0),
             "completion": ticket_total_prior["completion"] + run_total["completion"],
             "total": ticket_total_prior["total"] + run_total["total"],
         }
@@ -217,7 +220,7 @@ class TicketTokenUsageMiddleware(AgentMiddleware):
             except Exception:
                 logger.warning("Failed to persist token usage metadata", exc_info=True)
 
-        self._run_accum = {"prompt": 0, "completion": 0, "total": 0}
+        self._run_accum = {"prompt": 0, "cache_read": 0, "completion": 0, "total": 0}
         logger.debug("aafter_agent: reset _run_accum and done")
         return None
 
@@ -257,6 +260,7 @@ class TicketTokenUsageMiddleware(AgentMiddleware):
         )
 
         prompt = 0
+        cache_read = 0
         completion = 0
         total = 0
 
@@ -264,6 +268,12 @@ class TicketTokenUsageMiddleware(AgentMiddleware):
             prompt = usage_md.get("input_tokens", usage_md.get("prompt_tokens", 0))
             completion = usage_md.get("output_tokens", usage_md.get("completion_tokens", 0))
             total = usage_md.get("total_tokens", 0)
+            
+            input_details = usage_md.get("input_token_details") or usage_md.get("prompt_tokens_details")
+            if isinstance(input_details, dict):
+                cache_read = input_details.get("cache_read", input_details.get("cached_tokens", 0))
+            else:
+                cache_read = usage_md.get("cache_read_input_tokens", 0)
 
         if not total:
             for key in ("token_usage", "usage"):
@@ -272,6 +282,13 @@ class TicketTokenUsageMiddleware(AgentMiddleware):
                     prompt = u.get("prompt_tokens", u.get("input_tokens", 0))
                     completion = u.get("completion_tokens", u.get("output_tokens", 0))
                     total = u.get("total_tokens", u.get("total", 0))
+                    
+                    input_details = u.get("prompt_tokens_details") or u.get("input_token_details")
+                    if isinstance(input_details, dict):
+                        cache_read = input_details.get("cached_tokens", input_details.get("cache_read", 0))
+                    else:
+                        cache_read = u.get("cache_read_input_tokens", 0)
+
                 if not total:
                     total = int(prompt) + int(completion)
                 if total:
@@ -287,11 +304,13 @@ class TicketTokenUsageMiddleware(AgentMiddleware):
             return
 
         self._run_accum["prompt"] += int(prompt)
+        self._run_accum["cache_read"] += int(cache_read)
         self._run_accum["completion"] += int(completion)
         self._run_accum["total"] += int(total)
         logger.debug(
-            "_accumulate: added prompt=%s completion=%s total=%s → run_accum=%s",
+            "_accumulate: added prompt=%s cache_read=%s completion=%s total=%s → run_accum=%s",
             prompt,
+            cache_read,
             completion,
             total,
             self._run_accum,
@@ -301,7 +320,7 @@ class TicketTokenUsageMiddleware(AgentMiddleware):
 def _read_ticket_total(metadata: dict[str, Any]) -> dict[str, int]:
     """Read the cumulative token total stored in thread metadata.
 
-    Returns a dict of ``{"prompt":, "completion":, "total":}`` with all
+    Returns a dict of ``{"prompt":, "cache_read":, "completion":, "total":}`` with all
     values coerced to ``int``. Falls back to all-zero when the key is
     absent or malformed.
     """
@@ -309,16 +328,18 @@ def _read_ticket_total(metadata: dict[str, Any]) -> dict[str, int]:
     if isinstance(stored, dict):
         return {
             "prompt": int(stored.get("prompt", 0)),
+            "cache_read": int(stored.get("cache_read", 0)),
             "completion": int(stored.get("completion", 0)),
             "total": int(stored.get("total", 0)),
         }
-    return {"prompt": 0, "completion": 0, "total": 0}
+    return {"prompt": 0, "cache_read": 0, "completion": 0, "total": 0}
 
 
 def _build_comment_body(ticket_id: str, total: dict[str, int], phase_table: str) -> str:
     """Render the token-usage markdown body for a Jira comment.
     """
     p = total["prompt"]
+    cr = total.get("cache_read", 0)
     c = total["completion"]
     t = total["total"]
     
@@ -328,8 +349,9 @@ def _build_comment_body(ticket_id: str, total: dict[str, int], phase_table: str)
         f"**Cumulative Totals:**\n"
         f"| | Tokens |\n"
         f"|---|---|\n"
-        f"| Prompt | {p:,} |\n"
-        f"| Completion | {c:,} |\n"
+        f"| Input | {p:,} |\n"
+        f"| Cache Read | {cr:,} |\n"
+        f"| Output | {c:,} |\n"
         f"| **Total** | **{t:,}** |\n\n"
         f"**Current Run Phase Breakdown:**\n\n"
         f"{phase_table}"
