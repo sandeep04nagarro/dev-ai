@@ -73,8 +73,7 @@ ALL_PHASES = [
     PHASE_REVIEW,
 ]
 
-_EMPTY_PHASE: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-
+_EMPTY_PHASE: dict[str, int] = {"prompt_tokens": 0, "cache_read_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
 def _new_phase_breakdown() -> dict[str, dict[str, int]]:
     return {phase: dict(_EMPTY_PHASE) for phase in ALL_PHASES}
@@ -121,7 +120,7 @@ class PhaseTokenLedger:
     # Accumulation
     # ------------------------------------------------------------------
 
-    def add(self, phase: str, prompt: int, completion: int, total: int | None = None) -> None:
+    def add(self, phase: str, prompt: int, cache_read: int, completion: int, total: int | None = None) -> None:
         """Add token counts to a specific phase bucket."""
         if phase not in ALL_PHASES:
             logger.warning("Unknown profiling phase '%s', defaulting to tool_execution", phase)
@@ -130,13 +129,15 @@ class PhaseTokenLedger:
             total = prompt + completion
         with self._lock:
             self._phases[phase]["prompt_tokens"] += int(prompt)
+            self._phases[phase]["cache_read_tokens"] += int(cache_read)
             self._phases[phase]["completion_tokens"] += int(completion)
             self._phases[phase]["total_tokens"] += int(total)
         logger.debug(
-            "Profiler [%s][%s] += prompt=%d completion=%d total=%d",
+            "Profiler [%s][%s] += input=%d cache_read=%d output=%d total=%d",
             self._issue_key,
             phase,
             prompt,
+            cache_read,
             completion,
             total,
         )
@@ -147,19 +148,20 @@ class PhaseTokenLedger:
             return {p: dict(v) for p, v in self._phases.items()}
 
     def get_totals(self) -> dict[str, int]:
-        """Return {prompt, completion, total} summed across all phases."""
+        """Return {prompt, cache_read, completion, total} summed across all phases."""
         with self._lock:
             prompt = sum(v["prompt_tokens"] for v in self._phases.values())
+            cache_read = sum(v["cache_read_tokens"] for v in self._phases.values())
             completion = sum(v["completion_tokens"] for v in self._phases.values())
-            return {"prompt": prompt, "completion": completion, "total": prompt + completion}
+            return {"prompt": prompt, "cache_read": cache_read, "completion": completion, "total": prompt + completion}
 
     def build_markdown_table(self) -> str:
         """Build a markdown table showing the per-phase token breakdown."""
         phases = self.get_phase_snapshot()
         totals = self.get_totals()
 
-        header = "| Phase | Prompt Tokens | Completion Tokens | Total |\n"
-        sep    = "|-------|---------------|-------------------|-------|\n"
+        header = "| Phase | Input | Cache Read | Output | Total |\n"
+        sep    = "|-------|-------|------------|--------|-------|\n"
         rows: list[str] = []
 
         phase_labels = {
@@ -173,15 +175,17 @@ class PhaseTokenLedger:
             label = phase_labels.get(phase_key, phase_key)
             d = phases[phase_key]
             p = d["prompt_tokens"]
+            cr = d["cache_read_tokens"]
             c = d["completion_tokens"]
             t = d["total_tokens"]
-            rows.append(f"| {label} | {p:,} | {c:,} | {t:,} |\n")
+            rows.append(f"| {label} | {p:,} | {cr:,} | {c:,} | {t:,} |\n")
 
         grand_p = totals["prompt"]
+        grand_cr = totals["cache_read"]
         grand_c = totals["completion"]
         grand_t = totals["total"]
         rows.append(
-            f"| **Total** | **{grand_p:,}** | **{grand_c:,}** | **{grand_t:,}** |\n"
+            f"| **Total** | **{grand_p:,}** | **{grand_cr:,}** | **{grand_c:,}** | **{grand_t:,}** |\n"
         )
 
         return header + sep + "".join(rows)
@@ -206,26 +210,27 @@ def record_repo_selection_tokens(
         response:   The return value of ``model.ainvoke(messages)``.
         thread_id:  Optional LangGraph thread id for log correlation.
     """
-    prompt, completion, total = _extract_usage(response)
+    prompt, cache_read, completion, total = _extract_usage(response)
     if not total:
         logger.debug("record_repo_selection_tokens: no usage found for %s", issue_key)
         return
 
     ledger = PhaseTokenLedger.get(issue_key)
-    ledger.add(PHASE_MULTI_REPO_SELECTION, prompt, completion, total)
+    ledger.add(PHASE_MULTI_REPO_SELECTION, prompt, cache_read, completion, total)
     logger.info(
-        "PhaseProfiler RepoSelection issue=%s p=%d c=%d t=%d",
-        issue_key, prompt, completion, total
+        "PhaseProfiler RepoSelection issue=%s input=%d cache_read=%d output=%d total=%d",
+        issue_key, prompt, cache_read, completion, total
     )
 
 
-def _extract_usage(response: Any) -> tuple[int, int, int]:
-    """Extract (prompt, completion, total) token counts from a LangChain response.
+def _extract_usage(response: Any) -> tuple[int, int, int, int]:
+    """Extract (prompt, cache_read, completion, total) token counts from a LangChain response.
 
     Tries ``usage_metadata`` first, then falls back to
     ``response_metadata["token_usage"]`` / ``["usage"]``.
     """
     prompt = 0
+    cache_read = 0
     completion = 0
     total = 0
 
@@ -234,6 +239,13 @@ def _extract_usage(response: Any) -> tuple[int, int, int]:
         prompt = int(usage_md.get("input_tokens", usage_md.get("prompt_tokens", 0)))
         completion = int(usage_md.get("output_tokens", usage_md.get("completion_tokens", 0)))
         total = int(usage_md.get("total_tokens", 0))
+        
+        input_details = usage_md.get("input_token_details") or usage_md.get("prompt_tokens_details")
+        if isinstance(input_details, dict):
+            cache_read = int(input_details.get("cache_read", input_details.get("cached_tokens", 0)))
+        else:
+            cache_read = int(usage_md.get("cache_read_input_tokens", 0))
+
         if not total:
             total = prompt + completion
 
@@ -245,12 +257,19 @@ def _extract_usage(response: Any) -> tuple[int, int, int]:
                 prompt = int(u.get("prompt_tokens", u.get("input_tokens", 0)))
                 completion = int(u.get("completion_tokens", u.get("output_tokens", 0)))
                 total = int(u.get("total_tokens", u.get("total", 0)))
+                
+                input_details = u.get("prompt_tokens_details") or u.get("input_token_details")
+                if isinstance(input_details, dict):
+                    cache_read = int(input_details.get("cached_tokens", input_details.get("cache_read", 0)))
+                else:
+                    cache_read = int(u.get("cache_read_input_tokens", 0))
+
                 if not total:
                     total = prompt + completion
                 if total:
                     break
 
-    return prompt, completion, total
+    return prompt, cache_read, completion, total
 
 
 # ---------------------------------------------------------------------------
@@ -342,7 +361,7 @@ class PhaseTokenProfilerCallback(BaseCallbackHandler):
     ) -> None:
         """Extract token usage and route to the correct phase bucket."""
         phase = self._determine_phase(run_id, tags or [])
-        prompt, completion, total = self._extract_from_llm_result(response)
+        prompt, cache_read, completion, total = self._extract_from_llm_result(response)
         self._run_has_tool_context.pop(run_id, None)
 
         if not total:
@@ -352,13 +371,14 @@ class PhaseTokenProfilerCallback(BaseCallbackHandler):
             return
 
         ledger = PhaseTokenLedger.get(self._issue_key)
-        ledger.add(phase, prompt, completion, total)
+        ledger.add(phase, prompt, cache_read, completion, total)
         logger.info(
-            "PhaseProfiler on_llm_end run_id=%s issue=%s phase=%s p=%d c=%d t=%d",
+            "PhaseProfiler on_llm_end run_id=%s issue=%s phase=%s input=%d cache_read=%d output=%d total=%d",
             run_id,
             self._issue_key,
             phase,
             prompt,
+            cache_read,
             completion,
             total,
         )
@@ -392,9 +412,10 @@ class PhaseTokenProfilerCallback(BaseCallbackHandler):
         return False
 
     @staticmethod
-    def _extract_from_llm_result(response: LLMResult) -> tuple[int, int, int]:
-        """Pull (prompt, completion, total) out of an ``LLMResult``."""
+    def _extract_from_llm_result(response: LLMResult) -> tuple[int, int, int, int]:
+        """Pull (prompt, cache_read, completion, total) out of an ``LLMResult``."""
         prompt = 0
+        cache_read = 0
         completion = 0
         total = 0
 
@@ -406,6 +427,13 @@ class PhaseTokenProfilerCallback(BaseCallbackHandler):
                 prompt = int(u.get("input_tokens", u.get("prompt_tokens", 0)))
                 completion = int(u.get("output_tokens", u.get("completion_tokens", 0)))
                 total = int(u.get("total_tokens", u.get("total", 0)))
+                
+                input_details = u.get("input_token_details") or u.get("prompt_tokens_details")
+                if isinstance(input_details, dict):
+                    cache_read = int(input_details.get("cache_read", input_details.get("cached_tokens", 0)))
+                else:
+                    cache_read = int(u.get("cache_read_input_tokens", 0))
+
                 if not total:
                     total = prompt + completion
                 if total:
@@ -423,8 +451,17 @@ class PhaseTokenProfilerCallback(BaseCallbackHandler):
                         p = int(usage_md.get("input_tokens", usage_md.get("prompt_tokens", 0)))
                         c = int(usage_md.get("output_tokens", usage_md.get("completion_tokens", 0)))
                         t = int(usage_md.get("total_tokens", 0)) or (p + c)
+                        
+                        input_details = usage_md.get("input_token_details") or usage_md.get("prompt_tokens_details")
+                        cr = 0
+                        if isinstance(input_details, dict):
+                            cr = int(input_details.get("cache_read", input_details.get("cached_tokens", 0)))
+                        else:
+                            cr = int(usage_md.get("cache_read_input_tokens", 0))
+
                         prompt += p
+                        cache_read += cr
                         completion += c
                         total += t
 
-        return prompt, completion, total
+        return prompt, cache_read, completion, total
