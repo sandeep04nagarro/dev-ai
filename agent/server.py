@@ -86,6 +86,10 @@ SANDBOX_CREATING = "__creating__"
 SANDBOX_CREATION_TIMEOUT = 180
 SANDBOX_POLL_INTERVAL = 1.0
 
+SNAPSHOT_ENABLED = os.environ.get("SANDBOX_SNAPSHOT_ENABLED", "").lower() in (
+    "1", "true", "on", "yes",
+)
+
 from agent.utils.sandbox_state import (
     SANDBOX_BACKENDS,
     get_sandbox_id_from_metadata,
@@ -178,7 +182,7 @@ async def _configure_git_identity(sandbox_backend: SandboxBackendProtocol) -> No
     await asyncio.to_thread(
         sandbox_backend.execute,
         "git config --global user.name 'dev-agent[bot]' && "
-        "git config --global user.email 'open-swe@users.noreply.github.com'" 
+        "git config --global user.email 'open-swe@users.noreply.github.com'"
         # && "
     #     "git config --global credential.helper "
     #     "'!f() { echo \"username=x-access-token\"; echo \"password=$GH_TOKEN\"; }; f'",
@@ -281,17 +285,40 @@ def graph_loaded_for_execution(config: RunnableConfig) -> bool:
 async def ensure_sandbox_for_thread(thread_id: str) -> SandboxBackendProtocol:
     """Get-or-create a healthy sandbox bound to ``thread_id``.
 
-    Implements the four-state lifecycle described in AGENTS.md:
+    When ``SANDBOX_SNAPSHOT_ENABLED`` is set, uses snapshot state from LangGraph
+    metadata (not ``SANDBOX_BACKENDS`` cache) to decide whether to pull a pushed
+    image, reconnect to a stopped container, or create a fresh sandbox.
 
-    1. Cached in memory → ping; recreate on ``SandboxClientError``.
-    2. Metadata says ``__creating__`` and no cache → poll until ready.
-    3. No sandbox at all → create one and persist the id.
-    4. Metadata has an id but no cache → reconnect; recreate on failure.
-
-    For LangSmith sandboxes, also refreshes the GitHub App proxy auth.
-    Persists the resulting ``sandbox_id`` to thread metadata, and on the
-    first creation/reconnect for this thread initializes git identity.
+    Otherwise operates the four-state lifecycle described in AGENTS.md.
     """
+    if SNAPSHOT_ENABLED:
+        return await _ensure_sandbox_snapshot(thread_id)
+    return await _ensure_sandbox_legacy(thread_id)
+
+
+async def _ensure_sandbox_snapshot(thread_id: str) -> SandboxBackendProtocol:
+    from agent.utils.snapshot_state import resolve_snapshot_status, store_snapshot_status
+
+    snapshot_status = await resolve_snapshot_status(thread_id)
+
+    if snapshot_status is True:
+        logger.info("Snapshot image exists for thread %s, pulling from registry", thread_id)
+        sandbox_backend = await create_sandbox(thread_id)
+    elif isinstance(snapshot_status, str):
+        logger.info("Reconnecting to stopped container %s for thread %s", snapshot_status, thread_id)
+        sandbox_backend = await create_sandbox(snapshot_status)
+    else:
+        logger.info("Creating fresh sandbox for thread %s (no snapshot state)", thread_id)
+        sandbox_backend = await create_sandbox()
+        await store_snapshot_status(thread_id, sandbox_backend.id)
+
+    sandbox_backend = set_sandbox_backend(thread_id, sandbox_backend)
+    await _configure_git_identity(sandbox_backend)
+    await _configure_github_auth_in_sandbox(sandbox_backend)
+    return sandbox_backend
+
+
+async def _ensure_sandbox_legacy(thread_id: str) -> SandboxBackendProtocol:
     sandbox_backend = SANDBOX_BACKENDS.get(thread_id)
     sandbox_id = await get_sandbox_id_from_metadata(thread_id)
 
@@ -301,15 +328,11 @@ async def ensure_sandbox_for_thread(thread_id: str) -> SandboxBackendProtocol:
 
     if sandbox_backend:
         logger.info("Using cached sandbox backend for thread %s", thread_id)
-        # original_sandbox_id = sandbox_backend.id
         sandbox_backend = await check_or_recreate_sandbox(sandbox_backend, thread_id, sandbox_id=sandbox_id)
-        # if sandbox_backend.id == original_sandbox_id:
-        #     sandbox_backend = await _refresh_github_proxy_or_recreate(sandbox_backend, thread_id)
     elif sandbox_id is None:
         logger.info("Creating new sandbox for thread %s", thread_id)
         await client.threads.update(thread_id=thread_id, metadata={"sandbox_id": SANDBOX_CREATING})
         try:
-            # sandbox_backend = await _create_sandbox_with_proxy()
             sandbox_backend = await create_sandbox()
             logger.info("Sandbox created: %s", sandbox_backend.id)
         except Exception:
@@ -330,7 +353,6 @@ async def ensure_sandbox_for_thread(thread_id: str) -> SandboxBackendProtocol:
                 thread_id=thread_id, metadata={"sandbox_id": SANDBOX_CREATING}
             )
             try:
-                # sandbox_backend = await _create_sandbox_with_proxy()
                 sandbox_backend = await create_sandbox()
                 created_replacement_sandbox = True
             except Exception:
@@ -338,12 +360,7 @@ async def ensure_sandbox_for_thread(thread_id: str) -> SandboxBackendProtocol:
                 await client.threads.update(thread_id=thread_id, metadata={"sandbox_id": None})
                 raise
         if not created_replacement_sandbox:
-            # original_sandbox_id = sandbox_backend.id
             sandbox_backend = await check_or_recreate_sandbox(sandbox_backend, thread_id)
-            # if sandbox_backend.id == original_sandbox_id:
-            #     sandbox_backend = await _refresh_github_proxy_or_recreate(
-            #         sandbox_backend, thread_id
-            #     )
 
     sandbox_backend = set_sandbox_backend(thread_id, sandbox_backend)
 
@@ -352,10 +369,6 @@ async def ensure_sandbox_for_thread(thread_id: str) -> SandboxBackendProtocol:
             thread_id=thread_id, metadata={"sandbox_id": sandbox_backend.id}
         )
 
-    # Re-apply git identity every run: cached/reconnected sandboxes may have
-    # lost their `--global` config (or had it overwritten), and Vercel preview
-    # deploys reject commits whose author email can't be resolved to a GitHub
-    # account.
     await _configure_git_identity(sandbox_backend)
     await _configure_github_auth_in_sandbox(sandbox_backend)
 

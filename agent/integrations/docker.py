@@ -48,6 +48,24 @@ class DockerSandbox(BaseSandbox):
         """Short container ID used as the sandbox identifier."""
         return self._container_short_id
 
+    def stop(self, timeout: int = 5) -> None:
+        """Stop the container gracefully."""
+        try:
+            self._container.stop(timeout=timeout)
+        except docker.errors.NotFound:
+            logger.info("Container %s already stopped", self._container_short_id)
+        except docker.errors.APIError as e:
+            logger.error("Docker API error stopping %s: %s", self._container_short_id, e)
+
+    def remove(self, force: bool = True) -> None:
+        """Remove the container."""
+        try:
+            self._container.remove(force=force)
+        except docker.errors.NotFound:
+            logger.info("Container %s already removed", self._container_short_id)
+        except docker.errors.APIError as e:
+            logger.error("Docker API error removing %s: %s", self._container_short_id, e)
+
     def execute(
         self,
         command: str,
@@ -195,49 +213,14 @@ def _enforce_command_guard(command: str) -> None:
     )
 
 
-def create_docker_sandbox(sandbox_id: str | None = None) -> DockerSandbox:
-    """Create or reconnect to a Docker container sandbox.
+SNAPSHOT_ENABLED = os.environ.get("SANDBOX_SNAPSHOT_ENABLED", "").lower() in (
+    "1", "true", "on", "yes",
+)
 
-    When *sandbox_id* is ``None`` a new container is started from the
-    ``DOCKER_SANDBOX_IMAGE`` image (defaults to ``open-swe-sandbox:latest``).
-    When an id is supplied the function reconnects to an existing container,
-    starting it first if it is stopped.
 
-    The ``GITHUB_TOKEN`` environment variable (if set) is forwarded into the
-    container so the in-container GitHub CLI can authenticate without extra
-    setup.
-
-    Args:
-        sandbox_id: Optional existing container ID to reconnect to.
-            If ``None``, creates a new container.
-
-    Returns:
-        DockerSandbox instance implementing SandboxBackendProtocol.
-    """
-    client = docker.from_env()
-
-    # Forward GITHUB_TOKEN as a fallback (kept for backwards compatibility).
-    # The primary authentication mechanism is the GitHub App installation token
-    # injected via _configure_github_auth_in_sandbox() during sandbox setup.
-    _env_to_forward = ["GITHUB_TOKEN","GH_TOKEN"]
-    container_env = {k: os.environ[k] for k in _env_to_forward if k in os.environ}
-
-    if sandbox_id:
-        try:
-            container = client.containers.get(sandbox_id)
-            container.reload()
-            logger.info(
-                "Reconnecting to existing container %s (status=%s)", sandbox_id, container.status
-            )
-        except docker.errors.NotFound as e:
-            logger.warning("Existing container %s not found", sandbox_id)
-            raise RuntimeError(f"Existing container {sandbox_id} not found") from e
-        if container.status != "running":
-            logger.info("Starting stopped container %s", sandbox_id)
-            container.start()
-        return DockerSandbox(container)
-
-    image = DockerConfig.IMAGE
+def _create_container(image: str, client: docker.DockerClient | None = None) -> docker.models.containers.Container:
+    if client is None:
+        client = docker.from_env()
     mem_limit = DockerConfig.MEM_LIMIT
     cpu_count = DockerConfig.CPU_COUNT
     network = DockerConfig.NETWORK
@@ -260,6 +243,9 @@ def create_docker_sandbox(sandbox_id: str | None = None) -> DockerSandbox:
         "SYS_CHROOT",
         "KILL",
     ]
+
+    _env_to_forward = ["GITHUB_TOKEN", "GH_TOKEN"]
+    container_env = {k: os.environ[k] for k in _env_to_forward if k in os.environ}
 
     logger.info(
         "Creating container image=%s mem=%s cpu=%s network=%s "
@@ -287,6 +273,83 @@ def create_docker_sandbox(sandbox_id: str | None = None) -> DockerSandbox:
         environment=container_env,
     )
 
-    logger.info("Container %s created from pre-baked image", container.short_id)
+    logger.info("Container %s created from image %s", container.short_id, image)
+    return container
 
-    return DockerSandbox(container)
+
+def _resolve_from_snapshot(thread_id: str) -> DockerSandbox:
+    from agent.utils.snapshot import create_registry
+    from agent.utils.snapshot_state import clear_snapshot_state, get_snapshot_state
+
+    state = get_snapshot_state(thread_id)
+    client = docker.from_env()
+
+    if state is True:
+        registry = create_registry()
+        if registry:
+            tag = registry.pull_image(thread_id)
+            if tag:
+                return DockerSandbox(_create_container(tag, client))
+            logger.warning("Failed to pull snapshot for thread %s, creating fresh", thread_id)
+        else:
+            logger.warning("Snapshot enabled but no registry configured for thread %s", thread_id)
+    elif isinstance(state, str):
+        try:
+            container = client.containers.get(state)
+            container.reload()
+            logger.info("Reconnecting to stopped container %s for thread %s", state, thread_id)
+            if container.status != "running":
+                container.start()
+            return DockerSandbox(container)
+        except docker.errors.NotFound:
+            logger.warning("Container %s for thread %s not found, creating fresh", state, thread_id)
+            clear_snapshot_state(thread_id)
+
+    return DockerSandbox(_create_container(DockerConfig.IMAGE, client))
+
+
+def create_docker_sandbox(sandbox_id: str | None = None) -> DockerSandbox:
+    """Create or reconnect to a Docker container sandbox.
+
+    When *sandbox_id* is ``None`` a new container is started from the
+    ``DOCKER_SANDBOX_IMAGE`` image (defaults to ``open-swe-sandbox:latest``).
+    When an id is supplied the function reconnects to an existing container,
+    starting it first if it is stopped.
+
+    When ``SANDBOX_SNAPSHOT_ENABLED`` is set, *sandbox_id* is treated as a
+    ``thread_id`` and the function resolves the sandbox from snapshot state:
+    either pulling a previously pushed image from the registry, reconnecting
+    to a stopped container, or creating a fresh container as fallback.
+
+    The ``GITHUB_TOKEN`` environment variable (if set) is forwarded into the
+    container so the in-container GitHub CLI can authenticate without extra
+    setup.
+
+    Args:
+        sandbox_id: Optional existing container ID to reconnect to.
+            If ``None``, creates a new container.
+
+    Returns:
+        DockerSandbox instance implementing SandboxBackendProtocol.
+    """
+    if SNAPSHOT_ENABLED and sandbox_id is not None:
+        return _resolve_from_snapshot(sandbox_id)
+
+    client = docker.from_env()
+
+    if sandbox_id:
+        try:
+            container = client.containers.get(sandbox_id)
+            container.reload()
+            logger.info(
+                "Reconnecting to existing container %s (status=%s)", sandbox_id, container.status
+            )
+        except docker.errors.NotFound as e:
+            logger.warning("Existing container %s not found", sandbox_id)
+            raise RuntimeError(f"Existing container {sandbox_id} not found") from e
+        if container.status != "running":
+            logger.info("Starting stopped container %s", sandbox_id)
+            container.start()
+        return DockerSandbox(container)
+
+    return DockerSandbox(_create_container(DockerConfig.IMAGE, client))
