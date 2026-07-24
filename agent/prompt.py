@@ -328,8 +328,9 @@ When you have completed your implementation, follow these steps in order:
    <One-line changelog summary for self-hosted customers, or "none" for internal/CI/test/refactor changes.>
 
    ## Test Plan
-   - [ ] <new/novel verification steps only — NOT "run existing tests" or "verify existing behavior">
+   - [ ] <new/novel verification steps only — NOT "run existing tests" or "verify existing behavior">{pr_quality_checklist_template}
    ```
+{pr_quality_checklist_instructions}
 
    When the target repo is public, don't reference private repos or private PR/issue numbers in the description.
 
@@ -397,6 +398,26 @@ def _render_collaboration_section(identity: CollaboratorIdentity | None) -> str:
         commit_email=identity.commit_email,
     )
 
+
+PR_QUALITY_CHECKLIST_TEMPLATE = """
+   ## Agent Quality Checklist
+   - [ ] **Lint & Format**: <Exact command(s) run and result, or why skipped (e.g. "no linter configured in repo")>
+   - [ ] **Build**: <Exact command run and result, or why skipped>
+   - [ ] **Tests**: <Which existing tests were run and pass/fail; whether new tests were added for this change; or "Deferred to CI" with reason>
+   - [ ] **Security**: <New inputs, secrets, or permissions checked (no hardcoded credentials, no unvalidated input passed to shell/SQL/eval); "N/A" if nothing security-relevant changed>
+   - [ ] **Dependencies**: <Any new/updated packages, why they were needed; "N/A" if none added>
+   - [ ] **Breaking Changes**: <Any API/schema/config/CLI changes that could break existing callers, plus migration notes; "None" if not applicable>
+   - [ ] **Docs**: <Which docs/README/comments were updated to reflect this change, or "N/A">"""
+
+PR_QUALITY_CHECKLIST_INSTRUCTIONS = """
+   **Checklist Instructions:**
+   Before filling this out, inspect the repo to determine its ACTUAL tooling (package.json scripts, Makefile, tox.ini/pyproject, CI config, etc.). Do not assume a stack — report the exact command you ran.
+   
+   Rules:
+   1. Check off (`[x]`) only items you personally verified locally — never check a box on assumption.
+   2. For every unchecked (`[ ]`) item, give a specific one-sentence reason — not a generic "skipped due to time."
+   3. Never fabricate a command, test count, or result. If you couldn't run something, say so plainly.
+   4. If CI already covers an item, you may defer to it — but state that explicitly rather than leaving the line ambiguous."""
 
 ALWAYS_CREATE_PR_SECTION = """---
 
@@ -498,6 +519,10 @@ def construct_system_prompt(
 
     gh_auth_prefix = "GH_TOKEN=dummy " if SandboxConfig.TYPE == "langsmith" else ""
 
+    enable_checklist = os.environ.get("ENABLE_PR_QUALITY_CHECKLIST", "false").lower() == "true"
+    checklist_template = PR_QUALITY_CHECKLIST_TEMPLATE if enable_checklist else ""
+    checklist_instructions = PR_QUALITY_CHECKLIST_INSTRUCTIONS if enable_checklist else ""
+
     return SYSTEM_PROMPT_TEMPLATE.format(
         working_dir=working_dir,
         gh_auth_prefix=gh_auth_prefix,
@@ -505,6 +530,8 @@ def construct_system_prompt(
         # linear_issue_number=linear_issue_number or "<ISSUE_NUMBER>",
         default_prompt_section=default_prompt_section,
         pr_policy_override_section=ALWAYS_CREATE_PR_SECTION if create_prs else "",
+        pr_quality_checklist_template=checklist_template,
+        pr_quality_checklist_instructions=checklist_instructions,
         collaboration_section=_render_collaboration_section(triggering_user_identity),
     )
 
