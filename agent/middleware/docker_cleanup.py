@@ -15,6 +15,8 @@ from langgraph.runtime import Runtime
 
 from agent.integrations.docker import DockerSandbox
 from agent.utils.sandbox_state import SANDBOX_BACKENDS, unwrap_sandbox_backend
+from agent.utils.snapshot import create_registry
+from agent.utils.snapshot_state import store_snapshot_status
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +24,10 @@ if os.environ.get("DEBUG_MODE", False):
     logger.setLevel(logging.DEBUG)
 
 SNAPSHOT_ENABLED = os.environ.get("SANDBOX_SNAPSHOT_ENABLED", "").lower() in (
-    "1", "true", "on", "yes",
+    "1",
+    "true",
+    "on",
+    "yes",
 )
 
 
@@ -78,8 +83,6 @@ async def _snapshot_and_cleanup(
     thread_id: str,
     configurable: dict,
 ) -> None:
-    from agent.utils.snapshot import create_registry
-    from agent.utils.snapshot_state import store_snapshot_status
 
     registry = create_registry()
     if not registry:
@@ -89,13 +92,13 @@ async def _snapshot_and_cleanup(
 
     run_id = configurable.get("langgraph_run_id") or str(uuid4())
     container_id = sandbox.id
-    client = docker.from_env()
+    client = await asyncio.to_thread(docker.from_env)
 
     await asyncio.to_thread(sandbox.stop, timeout=5)
 
     try:
         await asyncio.to_thread(
-            client.images.commit,
+            client.api.commit,
             container_id,
             repository=f"sandbox-{thread_id}",
             tag=run_id,
