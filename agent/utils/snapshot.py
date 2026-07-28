@@ -46,8 +46,13 @@ def create_registry() -> RegistryBackend | None:
         endpoint = os.environ.get("SANDBOX_REGISTRY_URI", "http://localhost:4566")
         return cls(endpoint=endpoint)
     if registry_type == "aws_ecr":
-        registry_uri = os.environ["SANDBOX_REGISTRY_URI"]
+        registry_uri = os.environ.get("SANDBOX_REGISTRY_URI", "")
+        if not registry_uri:
+            raise ValueError("SANDBOX_REGISTRY_URI must be set for ECR registry")
+        repo_name = os.environ.get("SANDBOX_REGISTRY_REPO", "")
+        if not repo_name:
+            raise ValueError("SANDBOX_REGISTRY_REPO must be set for ECR registry")
         region = os.environ.get("AWS_REGION", "us-east-1")
-        return cls(registry_uri=registry_uri, region=region)
+        return cls(registry_uri=registry_uri, repo_name=repo_name, region=region)
 
     raise ValueError(f"Unsupported registry type: {registry_type}")

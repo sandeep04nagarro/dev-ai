@@ -10,11 +10,18 @@ logger = logging.getLogger(__name__)
 
 
 class AwsEcrRegistry:
-    def __init__(self, registry_uri: str, region: str = "us-east-1"):
+    def __init__(self, registry_uri: str, repo_name: str, region: str = "us-east-1"):
         self._registry_uri = registry_uri
+        self._repo_name = repo_name
         self._region = region
-        self._docker = docker.from_env()
-        self._ensure_auth()
+        self._docker = None
+
+    @property
+    def _docker_client(self):
+        if self._docker is None:
+            self._docker = docker.from_env()
+            self._ensure_auth()
+        return self._docker
 
     def _ensure_auth(self) -> None:
         try:
@@ -38,12 +45,11 @@ class AwsEcrRegistry:
             raise
 
     def push_image(self, thread_id: str, run_id: str) -> bool:
-        repo_name = f"sandbox-{thread_id}"
-        local_tag = f"{repo_name}:{run_id}"
-        remote_tag_run = f"{self._registry_uri}/{repo_name}:{run_id}"
-        remote_tag_latest = f"{self._registry_uri}/{repo_name}:latest"
+        local_tag = f"sandbox-{thread_id}:{run_id}"
+        remote_tag_run = f"{self._registry_uri}/{self._repo_name}:{thread_id}-{run_id}"
+        remote_tag_latest = f"{self._registry_uri}/{self._repo_name}:{thread_id}-latest"
 
-        docker_api = self._docker.api
+        docker_api = self._docker_client.api
         try:
             docker_api.tag(local_tag, remote_tag_run)
             docker_api.tag(local_tag, remote_tag_latest)
@@ -56,57 +62,63 @@ class AwsEcrRegistry:
         finally:
             for tag in (remote_tag_run, remote_tag_latest):
                 try:
-                    self._docker.images.remove(tag)
+                    self._docker_client.images.remove(tag)
                 except docker.errors.NotFound:
                     pass
                 except Exception:
                     logger.exception("Failed to remove remote tag %s", tag)
 
     def pull_image(self, thread_id: str) -> str | None:
-        repo_name = f"sandbox-{thread_id}"
-        remote_latest = f"{self._registry_uri}/{repo_name}:latest"
+        thread_latest = f"{self._registry_uri}/{self._repo_name}:{thread_id}-latest"
 
         try:
-            image = self._docker.images.pull(remote_latest)
+            image = self._docker_client.images.pull(thread_latest)
             return image.id
         except docker.errors.NotFound:
-            logger.info("ECR latest tag not found for %s, trying specific tags", repo_name)
+            logger.info("ECR latest tag not found for thread %s, trying specific tags", thread_id)
 
         tags = self.list_tags(thread_id)
         if not tags:
-            logger.warning("No ECR tags found for repo %s", repo_name)
+            logger.warning("No ECR tags found for thread %s", thread_id)
             return None
 
         tag = tags[-1]
-        remote_tag = f"{self._registry_uri}/{repo_name}:{tag}"
+        remote_tag = f"{self._registry_uri}/{self._repo_name}:{tag}"
         try:
-            image = self._docker.images.pull(remote_tag)
+            image = self._docker_client.images.pull(remote_tag)
             return image.id
         except docker.errors.NotFound:
-            logger.warning("ECR tag %s not found for repo %s", tag, repo_name)
+            logger.warning("ECR tag %s not found for thread %s", tag, thread_id)
             return None
         except docker.errors.APIError as e:
             logger.error("Docker API error pulling ECR image for thread %s: %s", thread_id, e)
             return None
 
     def list_tags(self, thread_id: str) -> list[str]:
-        repo_name = f"sandbox-{thread_id}"
         try:
             result = subprocess.run(
                 [
-                    "aws", "ecr", "list-images",
-                    "--repository-name", repo_name,
-                    "--region", self._region,
+                    "aws",
+                    "ecr",
+                    "list-images",
+                    "--repository-name",
+                    self._repo_name,
+                    "--region",
+                    self._region,
                 ],
                 capture_output=True,
                 text=True,
                 check=True,
             )
             data = json.loads(result.stdout)
-            return [item["imageTag"] for item in data.get("imageIds", []) if "imageTag" in item]
+            return sorted(
+                item["imageTag"]
+                for item in data.get("imageIds", [])
+                if "imageTag" in item and item["imageTag"].startswith(f"{thread_id}-")
+            )
         except subprocess.CalledProcessError as e:
-            logger.error("Failed to list ECR images for %s: %s", repo_name, e.stderr)
+            logger.error("Failed to list ECR images for %s: %s", self._repo_name, e.stderr)
             return []
         except Exception as e:
-            logger.error("Error listing ECR images for %s: %s", repo_name, e)
+            logger.error("Error listing ECR images for %s: %s", self._repo_name, e)
             return []
