@@ -73,7 +73,8 @@ class ProfileUpdate(BaseModel):
 
 
 def _client():
-    return get_client()
+    import os
+    return get_client(url=os.environ.get("LANGGRAPH_URL", "http://localhost:2024"))
 
 
 async def _get_value(namespace: list[str], key: str) -> dict[str, Any] | None:

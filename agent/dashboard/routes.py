@@ -23,6 +23,11 @@ from .enabled_repos import (
     list_enabled_review_repos,
     set_review_repo_enabled,
 )
+from .metrics_api import (
+    get_dashboard_metrics,
+    list_dashboard_sandboxes,
+    list_dashboard_agents,
+)
 from .oauth import (
     COOKIE_NAME,
     SESSION_TTL_SECONDS,
@@ -666,3 +671,24 @@ async def api_stream_thread(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )
+
+
+@router.get("/metrics")
+async def api_get_metrics(
+    session: dict[str, Any] = _SESSION_DEP,
+) -> dict[str, Any]:
+    return await get_dashboard_metrics(session["sub"])
+
+
+@router.get("/sandboxes")
+async def api_list_sandboxes(
+    session: dict[str, Any] = _SESSION_DEP,
+) -> list[dict[str, Any]]:
+    return await list_dashboard_sandboxes(session["sub"])
+
+
+@router.get("/agents")
+async def api_list_agents(
+    session: dict[str, Any] = _SESSION_DEP,
+) -> list[dict[str, Any]]:
+    return await list_dashboard_agents(session["sub"])
