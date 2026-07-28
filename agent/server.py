@@ -35,6 +35,7 @@ from agent.middleware import (  # noqa: E402
     build_server_middleware_list,
 )
 from agent.utils.config import LLMConfig
+from agent.utils.snapshot_state import resolve_snapshot_status, store_snapshot_status
 
 from .dashboard.agent_overrides import (
     load_profile,
@@ -297,7 +298,6 @@ async def ensure_sandbox_for_thread(thread_id: str) -> SandboxBackendProtocol:
 
 
 async def _ensure_sandbox_snapshot(thread_id: str) -> SandboxBackendProtocol:
-    from agent.utils.snapshot_state import resolve_snapshot_status, store_snapshot_status
 
     snapshot_status = await resolve_snapshot_status(thread_id)
 

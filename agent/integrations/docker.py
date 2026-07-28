@@ -23,6 +23,8 @@ from deepagents.backends.sandbox import BaseSandbox
 from langsmith.sandbox import SandboxClientError
 
 from agent.utils.config import DockerConfig
+from agent.utils.snapshot import create_registry
+from agent.utils.snapshot_state import clear_snapshot_state, get_snapshot_state
 
 logger = logging.getLogger(__name__)
 
@@ -278,8 +280,6 @@ def _create_container(image: str, client: docker.DockerClient | None = None) -> 
 
 
 def _resolve_from_snapshot(thread_id: str) -> DockerSandbox:
-    from agent.utils.snapshot import create_registry
-    from agent.utils.snapshot_state import clear_snapshot_state, get_snapshot_state
 
     state = get_snapshot_state(thread_id)
     client = docker.from_env()
