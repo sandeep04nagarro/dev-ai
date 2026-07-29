@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 from typing import Protocol
+from agent.integrations.localstack_registry import LocalStackRegistry
+from agent.integrations.aws_ecr_registry import AwsEcrRegistry
 
 
 class RegistryBackend(Protocol):
@@ -15,14 +17,10 @@ class RegistryBackend(Protocol):
 def _load_registry_backends() -> dict[str, type]:
     backends: dict[str, type] = {}
     try:
-        from agent.integrations.localstack_registry import LocalStackRegistry
-
         backends["localstack"] = LocalStackRegistry
     except ImportError:
         pass
     try:
-        from agent.integrations.aws_ecr_registry import AwsEcrRegistry
-
         backends["aws_ecr"] = AwsEcrRegistry
     except ImportError:
         pass
