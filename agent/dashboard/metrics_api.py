@@ -12,13 +12,6 @@ logger = logging.getLogger(__name__)
 
 def _default_model_id() -> str:
     """Label for threads whose metadata predates per-thread model tracking."""
-    try:
-        from dotenv import load_dotenv
-        from pathlib import Path
-        env_path = Path(__file__).resolve().parent.parent.parent.parent / ".env"
-        load_dotenv(dotenv_path=env_path)
-    except ImportError:
-        pass
     return os.environ.get("LLM_MODEL_ID") or "Unspecified"
 
 
