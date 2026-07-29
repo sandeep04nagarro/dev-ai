@@ -10,6 +10,13 @@ logger = logging.getLogger(__name__)
 
 
 class AwsEcrRegistry:
+    """
+    AWS ECR Registry implementation:
+    activates when SANDBOX_REGISTRY_TYPE is set to aws_ecr
+    Provides a secure authorized connection to the AWS ECR 
+    for pushing and pulling container snapshots.
+    """
+
     def __init__(self, registry_uri: str, repo_name: str, region: str = "us-east-1"):
         self._registry_uri = registry_uri
         self._repo_name = repo_name
@@ -18,12 +25,20 @@ class AwsEcrRegistry:
 
     @property
     def _docker_client(self):
+        """
+        private function used for lazy loading docker client 
+        to prevent blocking calls in the langgraph server. 
+        """
         if self._docker is None:
             self._docker = docker.from_env()
             self._ensure_auth()
         return self._docker
 
     def _ensure_auth(self) -> None:
+        """
+        Authorization helper function to support docker login 
+        with AWS credentials to log into AWS ECR
+        """
         try:
             result = subprocess.run(
                 ["aws", "ecr", "get-login-password", "--region", self._region],

@@ -9,6 +9,12 @@ logger = logging.getLogger(__name__)
 
 
 class LocalStackRegistry:
+    """
+    Local Stack Registry implementation:
+    activates when SANDBOX_REGISTRY_TYPE is set to localstack
+    Provides a connection to the localstack container registry services
+    for pushing and pulling container snapshots.
+    """
     def __init__(self, endpoint: str = "http://localhost:4566"):
         self._registry_uri = endpoint
         self._docker = None
