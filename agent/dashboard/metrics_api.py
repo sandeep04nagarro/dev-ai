@@ -12,6 +12,13 @@ logger = logging.getLogger(__name__)
 
 def _default_model_id() -> str:
     """Label for threads whose metadata predates per-thread model tracking."""
+    try:
+        from dotenv import load_dotenv
+        from pathlib import Path
+        env_path = Path(__file__).resolve().parent.parent.parent.parent / ".env"
+        load_dotenv(dotenv_path=env_path)
+    except ImportError:
+        pass
     return os.environ.get("LLM_MODEL_ID") or "Unspecified"
 
 
@@ -85,20 +92,31 @@ async def get_dashboard_metrics(login: str) -> Dict[str, Any]:
         
         # Token usage
         tokens = 0
-        if "jira_token_usage" in metadata:
+        if "jira_token_usage" in metadata and isinstance(metadata["jira_token_usage"], dict):
             tokens = metadata["jira_token_usage"].get("total", 0)
-        elif "token_usage" in metadata:
-            tokens = metadata["token_usage"].get("total", 0)
+        elif "token_usage" in metadata and isinstance(metadata["token_usage"], dict):
+            tu = metadata["token_usage"]
+            tokens = tu.get("total_tokens", tu.get("total", 0))
             
         if tokens > 0:
             created_at_ms = metadata.get("created_at_ms") or metadata.get("updated_at_ms")
+            dt = None
             if created_at_ms:
                 try:
                     dt = datetime.fromtimestamp(created_at_ms / 1000.0, tz=UTC)
-                    hour_str = dt.strftime("%H:00")
-                    token_usage_by_hour[hour_str] += tokens
                 except Exception:
                     pass
+            else:
+                created_at = t.get("created_at") if isinstance(t, dict) else getattr(t, "created_at", None)
+                if created_at:
+                    try:
+                        dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                    except Exception:
+                        pass
+            
+            if dt:
+                hour_str = dt.strftime("%H:00")
+                token_usage_by_hour[hour_str] += tokens
                     
     return {
         "overview": {

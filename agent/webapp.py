@@ -139,7 +139,7 @@ app = FastAPI(
 )
 
 DASHBOARD_ALLOWED_ORIGINS: list[str] = [
-    o.strip() for o in os.environ.get("DASHBOARD_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",") if o.strip()
+    o.strip() for o in os.environ.get("DASHBOARD_ALLOWED_ORIGINS", "http://localhost:3001,http://127.0.0.1:3000").split(",") if o.strip()
 ]
 if DASHBOARD_ALLOWED_ORIGINS:
     app.add_middleware(
