@@ -14,6 +14,7 @@ from langgraph.config import get_config
 from langgraph.runtime import Runtime
 
 from agent.integrations.docker import DockerSandbox
+from agent.utils.config import DockerConfig
 from agent.utils.sandbox_state import SANDBOX_BACKENDS, unwrap_sandbox_backend
 from agent.utils.snapshot import create_registry
 from agent.utils.snapshot_state import store_snapshot_status
@@ -29,6 +30,8 @@ SNAPSHOT_ENABLED = os.environ.get("SANDBOX_SNAPSHOT_ENABLED", "").lower() in (
     "on",
     "yes",
 )
+
+TIMEOUT = int(DockerConfig.TIMEOUT)
 
 
 @after_agent
@@ -92,7 +95,7 @@ async def _snapshot_and_cleanup(
 
     run_id = configurable.get("langgraph_run_id") or str(uuid4())
     container_id = sandbox.id
-    client = await asyncio.to_thread(docker.from_env)
+    client = await asyncio.to_thread(docker.from_env, timeout=TIMEOUT)
 
     await asyncio.to_thread(sandbox.stop, timeout=5)
 

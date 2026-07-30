@@ -20,6 +20,7 @@ import pytest
 
 from agent.integrations.docker import DockerSandbox, _create_container, create_docker_sandbox
 from agent.integrations.localstack_registry import LocalStackRegistry
+from agent.utils.config import DockerConfig
 from agent.utils.snapshot_state import PERSISTED, set_snapshot_state
 
 pytestmark = [
@@ -37,12 +38,13 @@ pytestmark = [
 
 THREAD_ID = "snapshot-int-test"
 RUN_ID = "int-test-run"
+TIMEOUT = int(DockerConfig.TIMEOUT)
 
 
 @pytest.fixture(scope="module")
 def docker_client():
     try:
-        client = docker.from_env(timeout=300)
+        client = docker.from_env(timeout=TIMEOUT)
         client.ping()
         return client
     except docker.errors.DockerException:

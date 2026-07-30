@@ -4,7 +4,10 @@ import json
 import logging
 import subprocess
 
+from agent.utils.config import DockerConfig
 import docker
+
+TIMEOUT=int(DockerConfig.TIMEOUT)
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +33,7 @@ class AwsEcrRegistry:
         to prevent blocking calls in the langgraph server. 
         """
         if self._docker is None:
-            self._docker = docker.from_env(timeout=300)
+            self._docker = docker.from_env(timeout=TIMEOUT)
             self._ensure_auth()
         return self._docker
 
