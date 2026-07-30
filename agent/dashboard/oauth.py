@@ -5,7 +5,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
-import os
+
+# import os
 import secrets
 import time
 from datetime import UTC, datetime, timedelta
@@ -16,6 +17,7 @@ import httpx
 import jwt
 from fastapi import HTTPException, Request
 
+from agent.utils.secrets import SecretsManager
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +27,15 @@ SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
 STATE_TTL_SECONDS = 600
 JWT_ALG = "HS256"
 
-GITHUB_APP_CLIENT_ID = os.environ.get("GITHUB_APP_CLIENT_ID", "")
-GITHUB_APP_CLIENT_SECRET = os.environ.get("GITHUB_APP_CLIENT_SECRET", "")
+# GITHUB_APP_CLIENT_ID = os.environ.get("GITHUB_APP_CLIENT_ID", "")
+# GITHUB_APP_CLIENT_SECRET = os.environ.get("GITHUB_APP_CLIENT_SECRET", "")
+GITHUB_APP_CLIENT_ID = SecretsManager.get("GITHUB_APP_CLIENT_ID", "")
+GITHUB_APP_CLIENT_SECRET = SecretsManager.get("GITHUB_APP_CLIENT_SECRET", "")
 
 
 def _secret() -> str:
-    s = os.environ.get("DASHBOARD_JWT_SECRET", "")
+    # s = os.environ.get("DASHBOARD_JWT_SECRET", "")
+    s = SecretsManager.get("DASHBOARD_JWT_SECRET", "")
     if not s:
         raise HTTPException(500, "DASHBOARD_JWT_SECRET not configured")
     return s
@@ -44,10 +49,12 @@ def _allowed_redirect_origins() -> set[str]:
     targets — but nothing else.
     """
     origins: set[str] = set()
-    base = os.environ.get("DASHBOARD_BASE_URL","").strip()
+    # base = os.environ.get("DASHBOARD_BASE_URL","").strip()
+    base = (SecretsManager.get("DASHBOARD_BASE_URL") or "").strip()
     if base:
         origins.add(_origin_of(base))
-    for entry in os.environ.get("DASHBOARD_ALLOWED_ORIGINS","").split(","):
+    # for entry in os.environ.get("DASHBOARD_ALLOWED_ORIGINS","").split(","):
+    for entry in (SecretsManager.get("DASHBOARD_ALLOWED_ORIGINS") or "").split(","):
         entry = entry.strip()
         if entry:
             origins.add(_origin_of(entry))
@@ -69,7 +76,8 @@ def sanitize_redirect_to(redirect_to: str | None) -> str:
     explicitly allowed. This blocks the open-redirect / phishing primitive
     where an attacker drops their own URL into `?redirect_to=`.
     """
-    fallback = os.environ.get("DASHBOARD_BASE_URL","").strip()
+    # fallback = os.environ.get("DASHBOARD_BASE_URL","").strip()
+    fallback = (SecretsManager.get("DASHBOARD_BASE_URL") or "").strip()
     if not redirect_to:
         return fallback
     candidate_origin = _origin_of(redirect_to)

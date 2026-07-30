@@ -1,9 +1,12 @@
 import asyncio
 import logging
-import os
+
+# import os
 from typing import Any
 
 from exa_py import Exa
+
+from agent.utils.secrets import SecretsManager
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +32,8 @@ def web_search(
         - results: Search results from Exa
         - error: Error message if something failed
     """
-    api_key = os.environ.get("EXA_API_KEY")
+    # api_key = os.environ.get("EXA_API_KEY")
+    api_key = SecretsManager.get("EXA_API_KEY")
     if not api_key:
         logger.warning("exa_api_key_missing")
         return {

@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
+    "boto3>=1.35.0",
     "deepagents>=0.6.6",
     "docker>=7.1.0",
     "fastapi>=0.136.1",

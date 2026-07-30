@@ -1,14 +1,16 @@
 import hashlib
 import json
 import logging
-import os
+# import os
 from typing import Any
 
 from agent.utils.config import ReconConfig
+from agent.utils.secrets import SecretsManager
 
 logger = logging.getLogger(__name__)
 
-if os.environ.get("DEBUG_MODE",False):
+# if os.environ.get("DEBUG_MODE",False):
+if SecretsManager.get("DEBUG_MODE") in ("1", "true", "True", "on", "yes"):
     logger.setLevel(logging.DEBUG)
 
 

@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import base64
 import logging
-import os
+
+# import os
+from agent.utils.secrets import SecretsManager
 
 logger = logging.getLogger(__name__)
 
@@ -25,14 +27,19 @@ def _build_otlp_exporter(*, compression: str | None = None) -> object | None:
     Passing ``compression="gzip"`` enables gzip compression on the payload body
     (gzip typically reduces protobuf payloads by 10–20×).
     """
-    secret_key = os.environ.get("LANGFUSE_SECRET_KEY")
-    public_key = os.environ.get("LANGFUSE_PUBLIC_KEY")
+    # secret_key = os.environ.get("LANGFUSE_SECRET_KEY")
+    # public_key = os.environ.get("LANGFUSE_PUBLIC_KEY")
+    secret_key = SecretsManager.get("LANGFUSE_SECRET_KEY")
+    public_key = SecretsManager.get("LANGFUSE_PUBLIC_KEY")
     if not secret_key or not public_key:
         return None
 
-    base_url = os.environ.get("LANGFUSE_BASE_URL", "https://cloud.langfuse.com").rstrip("/")
-    timeout = float(os.environ.get("LANGFUSE_TIMEOUT", "5"))
-    traces_export_path = os.environ.get("LANGFUSE_OTEL_TRACES_EXPORT_PATH")
+    # base_url = os.environ.get("LANGFUSE_BASE_URL", "https://cloud.langfuse.com").rstrip("/")
+    # timeout = float(os.environ.get("LANGFUSE_TIMEOUT", "5"))
+    # traces_export_path = os.environ.get("LANGFUSE_OTEL_TRACES_EXPORT_PATH")
+    base_url = (SecretsManager.get("LANGFUSE_BASE_URL") or "https://cloud.langfuse.com").rstrip("/")
+    timeout = float(SecretsManager.get("LANGFUSE_TIMEOUT") or "5")
+    traces_export_path = SecretsManager.get("LANGFUSE_OTEL_TRACES_EXPORT_PATH")
 
     endpoint = (
         f"{base_url}/{traces_export_path}"
@@ -109,7 +116,8 @@ def get_langfuse_handler() -> object | None:
     if _langfuse_handler is not None:
         return _langfuse_handler
 
-    if not bool(os.environ.get("LANGFUSE_SECRET_KEY") and os.environ.get("LANGFUSE_PUBLIC_KEY")):
+    # if not bool(os.environ.get("LANGFUSE_SECRET_KEY") and os.environ.get("LANGFUSE_PUBLIC_KEY")):
+    if not bool(SecretsManager.get("LANGFUSE_SECRET_KEY") and SecretsManager.get("LANGFUSE_PUBLIC_KEY")):
         return None
 
     try:

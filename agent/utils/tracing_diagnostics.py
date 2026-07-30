@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import gzip
 import logging
-import os
+# import os
 from collections import Counter
 from collections.abc import Sequence
 from typing import Any
@@ -10,6 +10,8 @@ from typing import Any
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import encode_spans
 from opentelemetry.sdk.trace import ReadableSpan, SpanProcessor
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
+
+from agent.utils.secrets import SecretsManager
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +198,8 @@ class SizeDiagnosticsExporter(SpanExporter):
 
 
 def is_diagnostics_enabled() -> bool:
-    return os.environ.get(DIAGNOSTICS_ENABLED, "").lower() in ("true", "1")
+    # return os.environ.get(DIAGNOSTICS_ENABLED, "").lower() in ("true", "1")
+    return (SecretsManager.get(DIAGNOSTICS_ENABLED) or "").lower() in ("true", "1")
 
 
 def wrap_exporter_if_enabled(exporter: SpanExporter) -> SpanExporter:

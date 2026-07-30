@@ -10,6 +10,8 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+from agent.utils.secrets import SecretsManager
+
 from langgraph.graph.state import RunnableConfig
 from langgraph.pregel import Pregel
 from langgraph_sdk import get_client
@@ -87,7 +89,10 @@ SANDBOX_CREATING = "__creating__"
 SANDBOX_CREATION_TIMEOUT = 180
 SANDBOX_POLL_INTERVAL = 1.0
 
-SNAPSHOT_ENABLED = os.environ.get("SANDBOX_SNAPSHOT_ENABLED", "").lower() in (
+# SNAPSHOT_ENABLED = os.environ.get("SANDBOX_SNAPSHOT_ENABLED", "").lower() in (
+#     "1", "true", "on", "yes",
+# )
+SNAPSHOT_ENABLED = (SecretsManager.get("SANDBOX_SNAPSHOT_ENABLED") or "").lower() in (
     "1", "true", "on", "yes",
 )
 
@@ -430,15 +435,18 @@ async def get_agent(config: RunnableConfig) -> Pregel:
         return _get_cached_sandbox_backend(_thread_id)
 
     model_id, profile_effort = await get_team_default_model("agent")
-    env_model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
+    # env_model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
+    env_model_id = SecretsManager.get("LLM_MODEL_ID")
     if env_model_id:
-        model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
+        # model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
+        model_id = SecretsManager.get("LLM_MODEL_ID", "deepseek-v4-flash")
         logger.info("Using LLM_MODEL_ID config override: %s", model_id)
 
     logger.info("Using team default agent model: model=%s effort=%s", model_id, profile_effort)
     subagent_model_id, subagent_effort = await get_team_default_subagent_model("agent")
     if env_model_id:
-        subagent_model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
+        # subagent_model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
+        subagent_model_id = SecretsManager.get("LLM_MODEL_ID", "deepseek-v4-flash")
         logger.info("Using LLM_MODEL_ID environment override for subagent: %s", subagent_model_id)
 
     logger.info(
