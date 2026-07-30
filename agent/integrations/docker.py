@@ -222,7 +222,7 @@ SNAPSHOT_ENABLED = os.environ.get("SANDBOX_SNAPSHOT_ENABLED", "").lower() in (
 
 def _create_container(image: str, client: docker.DockerClient | None = None) -> docker.models.containers.Container:
     if client is None:
-        client = docker.from_env()
+        client = docker.from_env(timeout=300)
     mem_limit = DockerConfig.MEM_LIMIT
     cpu_count = DockerConfig.CPU_COUNT
     network = DockerConfig.NETWORK
@@ -282,7 +282,7 @@ def _create_container(image: str, client: docker.DockerClient | None = None) -> 
 def _resolve_from_snapshot(thread_id: str) -> DockerSandbox:
 
     state = get_snapshot_state(thread_id)
-    client = docker.from_env()
+    client = docker.from_env(timeout=300)
 
     if state is True:
         registry = create_registry()
@@ -335,7 +335,7 @@ def create_docker_sandbox(sandbox_id: str | None = None) -> DockerSandbox:
     if SNAPSHOT_ENABLED and sandbox_id is not None:
         return _resolve_from_snapshot(sandbox_id)
 
-    client = docker.from_env()
+    client = docker.from_env(timeout=300)
 
     if sandbox_id:
         try:

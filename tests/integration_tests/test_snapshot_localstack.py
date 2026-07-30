@@ -42,7 +42,7 @@ RUN_ID = "int-test-run"
 @pytest.fixture(scope="module")
 def docker_client():
     try:
-        client = docker.from_env()
+        client = docker.from_env(timeout=300)
         client.ping()
         return client
     except docker.errors.DockerException:

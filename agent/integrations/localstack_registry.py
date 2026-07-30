@@ -22,7 +22,7 @@ class LocalStackRegistry:
     @property
     def _docker_client(self):
         if self._docker is None:
-            self._docker = docker.from_env()
+            self._docker = docker.from_env(timeout=300)
         return self._docker
 
     def push_image(self, thread_id: str, run_id: str) -> bool:
