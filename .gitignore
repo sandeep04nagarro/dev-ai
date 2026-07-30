@@ -39,6 +39,7 @@ yarn-error.log*
 # local env files
 .env*.local
 .env
+.env.*
 
 # vercel
 .vercel
@@ -71,3 +72,4 @@ __pycache__/
 # opencode files 
 .opencode/
 docs/
+.codegraph/
