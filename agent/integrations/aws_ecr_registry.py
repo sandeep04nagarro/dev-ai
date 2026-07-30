@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-import json
+import base64
 import logging
-import subprocess
+
+import boto3
+import docker
+from botocore.exceptions import ClientError
 
 from agent.utils.config import DockerConfig
-import docker
 
-TIMEOUT=int(DockerConfig.TIMEOUT)
+TIMEOUT = int(DockerConfig.TIMEOUT)
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +18,7 @@ class AwsEcrRegistry:
     """
     AWS ECR Registry implementation:
     activates when SANDBOX_REGISTRY_TYPE is set to aws_ecr
-    Provides a secure authorized connection to the AWS ECR 
+    Provides a secure authorized connection to the AWS ECR
     for pushing and pulling container snapshots.
     """
 
@@ -29,8 +31,8 @@ class AwsEcrRegistry:
     @property
     def _docker_client(self):
         """
-        private function used for lazy loading docker client 
-        to prevent blocking calls in the langgraph server. 
+        private function used for lazy loading docker client
+        to prevent blocking calls in the langgraph server.
         """
         if self._docker is None:
             self._docker = docker.from_env(timeout=TIMEOUT)
@@ -39,24 +41,21 @@ class AwsEcrRegistry:
 
     def _ensure_auth(self) -> None:
         """
-        Authorization helper function to support docker login 
+        Authorization helper function to support docker login
         with AWS credentials to log into AWS ECR
         """
         try:
-            result = subprocess.run(
-                ["aws", "ecr", "get-login-password", "--region", self._region],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            password = result.stdout.strip()
+            ecr_client = boto3.client("ecr", region_name=self._region)
+            response = ecr_client.get_authorization_token()
+            auth_data = response["authorizationData"][0]
+            password = base64.b64decode(auth_data["authorizationToken"]).decode().split(":")[1]
             self._docker.login(
                 username="AWS",
                 password=password,
                 registry=self._registry_uri,
             )
-        except subprocess.CalledProcessError as e:
-            logger.error("Failed to get ECR login password: %s", e.stderr)
+        except ClientError as e:
+            logger.error("Failed to get ECR login password: %s", e)
             raise
         except docker.errors.APIError as e:
             logger.error("Docker login to ECR failed: %s", e)
@@ -114,28 +113,15 @@ class AwsEcrRegistry:
 
     def list_tags(self, thread_id: str) -> list[str]:
         try:
-            result = subprocess.run(
-                [
-                    "aws",
-                    "ecr",
-                    "list-images",
-                    "--repository-name",
-                    self._repo_name,
-                    "--region",
-                    self._region,
-                ],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            data = json.loads(result.stdout)
+            ecr_client = boto3.client("ecr", region_name=self._region)
+            response = ecr_client.list_images(repositoryName=self._repo_name)
             return sorted(
                 item["imageTag"]
-                for item in data.get("imageIds", [])
+                for item in response.get("imageIds", [])
                 if "imageTag" in item and item["imageTag"].startswith(f"{thread_id}-")
             )
-        except subprocess.CalledProcessError as e:
-            logger.error("Failed to list ECR images for %s: %s", self._repo_name, e.stderr)
+        except ClientError as e:
+            logger.error("Failed to list ECR images for %s: %s", self._repo_name, e)
             return []
         except Exception as e:
             logger.error("Error listing ECR images for %s: %s", self._repo_name, e)
