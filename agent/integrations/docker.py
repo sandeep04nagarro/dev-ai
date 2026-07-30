@@ -26,6 +26,8 @@ from agent.utils.config import DockerConfig
 from agent.utils.snapshot import create_registry
 from agent.utils.snapshot_state import clear_snapshot_state, get_snapshot_state
 
+TIMEOUT = int(DockerConfig.TIMEOUT)
+
 logger = logging.getLogger(__name__)
 
 if os.environ.get("DEBUG_MODE",False):
@@ -222,7 +224,7 @@ SNAPSHOT_ENABLED = os.environ.get("SANDBOX_SNAPSHOT_ENABLED", "").lower() in (
 
 def _create_container(image: str, client: docker.DockerClient | None = None) -> docker.models.containers.Container:
     if client is None:
-        client = docker.from_env()
+        client = docker.from_env(timeout=TIMEOUT)
     mem_limit = DockerConfig.MEM_LIMIT
     cpu_count = DockerConfig.CPU_COUNT
     network = DockerConfig.NETWORK
@@ -282,7 +284,7 @@ def _create_container(image: str, client: docker.DockerClient | None = None) -> 
 def _resolve_from_snapshot(thread_id: str) -> DockerSandbox:
 
     state = get_snapshot_state(thread_id)
-    client = docker.from_env()
+    client = docker.from_env(timeout=TIMEOUT)
 
     if state is True:
         registry = create_registry()
@@ -335,7 +337,7 @@ def create_docker_sandbox(sandbox_id: str | None = None) -> DockerSandbox:
     if SNAPSHOT_ENABLED and sandbox_id is not None:
         return _resolve_from_snapshot(sandbox_id)
 
-    client = docker.from_env()
+    client = docker.from_env(timeout=TIMEOUT)
 
     if sandbox_id:
         try:

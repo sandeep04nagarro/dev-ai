@@ -4,6 +4,9 @@ import logging
 
 import docker
 import httpx
+from agent.utils.config import DockerConfig
+
+TIMEOUT = int(DockerConfig.TIMEOUT)
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +25,7 @@ class LocalStackRegistry:
     @property
     def _docker_client(self):
         if self._docker is None:
-            self._docker = docker.from_env()
+            self._docker = docker.from_env(timeout=TIMEOUT)
         return self._docker
 
     def push_image(self, thread_id: str, run_id: str) -> bool:
