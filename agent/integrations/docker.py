@@ -30,7 +30,7 @@ TIMEOUT = int(DockerConfig.TIMEOUT)
 
 logger = logging.getLogger(__name__)
 
-if os.environ.get("DEBUG_MODE",False):
+if os.environ.get("DEBUG_MODE", False):
     logger.setLevel(logging.DEBUG)
 
 
@@ -41,11 +41,21 @@ class DockerSandbox(BaseSandbox):
     and the GitHub CLI installed, avoiding any per-run apt-get overhead.
     """
 
-    def __init__(self, container: docker.models.containers.Container) -> None:
-        """Wrap a Docker container. Stores a reference to the live container object."""
+    def __init__(
+        self,
+        container: docker.models.containers.Container,
+        source_image_id: str | None = None,
+    ) -> None:
+        """Wrap a Docker container. Stores a reference to the live container object.
+
+        ``source_image_id`` records the registry image ID the container was created
+        from (only set for snapshot pulls) so cleanup can remove it after pushing a
+        new snapshot.
+        """
         self._container = container
         self._container_short_id = container.short_id
         self._container.reload()
+        self.source_image_id = source_image_id
 
     @property
     def id(self) -> str:
@@ -180,6 +190,7 @@ def _extract_first_file_from_tar(tar_bytes: bytes) -> bytes:
                     return f.read()
     return b""
 
+
 class CommandBlockedError(SandboxClientError):
     """Raised when a command is rejected by the security guard before exec.
 
@@ -218,11 +229,16 @@ def _enforce_command_guard(command: str) -> None:
 
 
 SNAPSHOT_ENABLED = os.environ.get("SANDBOX_SNAPSHOT_ENABLED", "").lower() in (
-    "1", "true", "on", "yes",
+    "1",
+    "true",
+    "on",
+    "yes",
 )
 
 
-def _create_container(image: str, client: docker.DockerClient | None = None) -> docker.models.containers.Container:
+def _create_container(
+    image: str, client: docker.DockerClient | None = None
+) -> docker.models.containers.Container:
     if client is None:
         client = docker.from_env(timeout=TIMEOUT)
     mem_limit = DockerConfig.MEM_LIMIT
@@ -291,7 +307,7 @@ def _resolve_from_snapshot(thread_id: str) -> DockerSandbox:
         if registry:
             tag = registry.pull_image(thread_id)
             if tag:
-                return DockerSandbox(_create_container(tag, client))
+                return DockerSandbox(_create_container(tag, client), source_image_id=tag)
             logger.warning("Failed to pull snapshot for thread %s, creating fresh", thread_id)
         else:
             logger.warning("Snapshot enabled but no registry configured for thread %s", thread_id)
