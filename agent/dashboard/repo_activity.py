@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -260,6 +261,180 @@ def _summarize_pulls(pulls: list[dict[str, Any]]) -> tuple[dict[str, int], dict[
         )
 
     return overall, agent, agent_pulls
+
+
+def _clamp(value: float) -> int:
+    return int(round(max(0.0, min(100.0, value))))
+
+
+def _score_review_burden(lines: int, comments: int, changes_requested: int) -> tuple[int, str]:
+    """How much human correction the change needed for its size.
+
+    Normalised per 100 lines so a 20-comment thread on a 2000-line PR is not
+    judged the same as 20 comments on a 30-line one. The floor of 1.0 stops
+    tiny diffs from dividing into a huge density.
+    """
+    density = comments / max(lines / 100.0, 1.0)
+    score = 100.0 - density * 6.0 - changes_requested * 12.0
+    detail = f"{comments} comment(s) across {lines} changed line(s)"
+    if changes_requested:
+        detail += f" · {changes_requested} change request(s)"
+    return _clamp(score), detail
+
+
+def _score_change_focus(files: int, lines: int) -> tuple[int, str]:
+    """Whether the diff stayed tight enough to review with confidence."""
+    score = 100.0 - max(0, files - 5) * 3.0 - max(0, lines - 400) / 40.0
+    return _clamp(score), f"{files} file(s), {lines} line(s) changed"
+
+
+def _score_acceptance(
+    state: str, draft: bool, approvals: int, changes_requested: int
+) -> tuple[int, str]:
+    """Did the work actually land."""
+    if state == "merged":
+        base, detail = 100.0, "Merged"
+    elif state == "closed":
+        base, detail = 15.0, "Closed without merging"
+    else:
+        base = 55.0 if draft else 65.0
+        detail = "Open (draft)" if draft else "Open, awaiting merge"
+    base += min(approvals * 5.0, 10.0) - changes_requested * 10.0
+    if approvals:
+        detail += f" · {approvals} approval(s)"
+    return _clamp(base), detail
+
+
+def _band(overall: int) -> str:
+    if overall >= 85:
+        return "excellent"
+    if overall >= 70:
+        return "good"
+    if overall >= 50:
+        return "fair"
+    return "needs-review"
+
+
+def _assess(stats: dict[str, Any], state: str, draft: bool) -> dict[str, Any]:
+    """A heuristic read on the agent's work, not a measurement.
+
+    Deliberately built only from signals GitHub reports for every PR, and every
+    input is returned alongside the score so a reader can disagree with it.
+    """
+    burden, burden_detail = _score_review_burden(
+        stats["lines_changed"], stats["total_comments"], stats["changes_requested"]
+    )
+    focus, focus_detail = _score_change_focus(stats["changed_files"], stats["lines_changed"])
+    acceptance, acceptance_detail = _score_acceptance(
+        state, draft, stats["approvals"], stats["changes_requested"]
+    )
+
+    overall = _clamp(burden * 0.40 + focus * 0.25 + acceptance * 0.35)
+    return {
+        "overall": overall,
+        "band": _band(overall),
+        "categories": [
+            {
+                "key": "review_burden",
+                "label": "Review burden",
+                "score": burden,
+                "detail": burden_detail,
+                "hint": "Fewer corrections per line reviewed means the agent landed it closer to right the first time.",
+            },
+            {
+                "key": "change_focus",
+                "label": "Change focus",
+                "score": focus,
+                "detail": focus_detail,
+                "hint": "Tight, single-purpose diffs are easier to trust than sprawling ones.",
+            },
+            {
+                "key": "acceptance",
+                "label": "Acceptance",
+                "score": acceptance,
+                "detail": acceptance_detail,
+                "hint": "Whether the change was merged, is still pending, or was rejected.",
+            },
+        ],
+    }
+
+
+async def get_pull_request_detail(
+    login: str, owner: str, repo: str, number: int
+) -> dict[str, Any]:
+    """One PR's stats plus a heuristic assessment of the agent's work on it."""
+    del login
+
+    token = await get_github_app_installation_token()
+    if not token:
+        raise RuntimeError("No GitHub App installation token available")
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    base = f"https://api.github.com/repos/{owner}/{repo}/pulls/{number}"
+
+    async with httpx.AsyncClient(timeout=25.0) as client:
+        detail_response, reviews_response = await asyncio.gather(
+            client.get(base, headers=headers),
+            client.get(f"{base}/reviews", headers=headers, params={"per_page": 100}),
+        )
+
+    if detail_response.status_code != 200:
+        raise RuntimeError(f"GitHub returned {detail_response.status_code} for PR #{number}")
+
+    pull = detail_response.json()
+    reviews = reviews_response.json() if reviews_response.status_code == 200 else []
+    review_states = [r.get("state") for r in reviews] if isinstance(reviews, list) else []
+
+    additions = pull.get("additions") or 0
+    deletions = pull.get("deletions") or 0
+    stats = {
+        "changed_files": pull.get("changed_files") or 0,
+        "additions": additions,
+        "deletions": deletions,
+        "lines_changed": additions + deletions,
+        "commits": pull.get("commits") or 0,
+        "comments": pull.get("comments") or 0,
+        "review_comments": pull.get("review_comments") or 0,
+        "total_comments": (pull.get("comments") or 0) + (pull.get("review_comments") or 0),
+        "approvals": sum(1 for s in review_states if s == "APPROVED"),
+        "changes_requested": sum(1 for s in review_states if s == "CHANGES_REQUESTED"),
+    }
+
+    state = _pr_state(pull)
+    draft = bool(pull.get("draft"))
+
+    created_at = pull.get("created_at")
+    ended_at = pull.get("merged_at") or pull.get("closed_at")
+    open_seconds = None
+    if created_at and ended_at:
+        try:
+            start = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+            end = datetime.fromisoformat(ended_at.replace("Z", "+00:00"))
+            open_seconds = max(0.0, (end - start).total_seconds())
+        except ValueError:
+            open_seconds = None
+
+    return {
+        "number": number,
+        "repo": f"{owner}/{repo}",
+        "title": pull.get("title") or "",
+        "url": pull.get("html_url") or "",
+        "state": state,
+        "draft": draft,
+        "author": (pull.get("user") or {}).get("login") or "",
+        "head_ref": (pull.get("head") or {}).get("ref") or "",
+        "base_ref": (pull.get("base") or {}).get("ref") or "",
+        "created_at": created_at,
+        "merged_at": pull.get("merged_at"),
+        "closed_at": pull.get("closed_at"),
+        "open_duration_seconds": open_seconds,
+        "stats": stats,
+        "assessment": _assess(stats, state, draft),
+    }
 
 
 async def get_pull_request_activity(login: str) -> dict[str, Any]:

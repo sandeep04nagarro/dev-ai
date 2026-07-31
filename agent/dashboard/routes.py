@@ -54,6 +54,7 @@ from .profiles import (
 )
 from .repo_activity import (
     get_pull_request_activity,
+    get_pull_request_detail,
     get_repository_activity,
     list_registered_projects,
 )
@@ -718,3 +719,16 @@ async def api_pull_request_activity(
     session: dict[str, Any] = _SESSION_DEP,
 ) -> dict[str, Any]:
     return await get_pull_request_activity(session["sub"])
+
+
+@router.get("/pull-requests/{owner}/{repo}/{number}")
+async def api_pull_request_detail(
+    owner: str,
+    repo: str,
+    number: int,
+    session: dict[str, Any] = _SESSION_DEP,
+) -> dict[str, Any]:
+    try:
+        return await get_pull_request_detail(session["sub"], owner, repo, number)
+    except RuntimeError as exc:
+        raise HTTPException(502, str(exc)) from exc
