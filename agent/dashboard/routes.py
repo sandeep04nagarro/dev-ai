@@ -25,8 +25,8 @@ from .enabled_repos import (
 )
 from .metrics_api import (
     get_dashboard_metrics,
-    list_dashboard_sandboxes,
     list_dashboard_agents,
+    list_dashboard_sandboxes,
 )
 from .oauth import (
     COOKIE_NAME,
@@ -51,6 +51,11 @@ from .profiles import (
     list_profiles,
     upsert_access_token_from_github_response,
     upsert_profile,
+)
+from .repo_activity import (
+    get_pull_request_activity,
+    get_repository_activity,
+    list_registered_projects,
 )
 from .review_style_jobs import (
     cancel_review_style_analysis,
@@ -692,3 +697,24 @@ async def api_list_agents(
     session: dict[str, Any] = _SESSION_DEP,
 ) -> list[dict[str, Any]]:
     return await list_dashboard_agents(session["sub"])
+
+
+@router.get("/repositories")
+async def api_repository_activity(
+    session: dict[str, Any] = _SESSION_DEP,
+) -> dict[str, Any]:
+    return await get_repository_activity(session["sub"])
+
+
+@router.get("/registered-projects")
+async def api_registered_projects(
+    _session: dict[str, Any] = _SESSION_DEP,
+) -> dict[str, Any]:
+    return {"projects": await list_registered_projects()}
+
+
+@router.get("/pull-requests")
+async def api_pull_request_activity(
+    session: dict[str, Any] = _SESSION_DEP,
+) -> dict[str, Any]:
+    return await get_pull_request_activity(session["sub"])
