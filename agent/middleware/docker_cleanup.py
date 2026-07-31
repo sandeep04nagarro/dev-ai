@@ -128,6 +128,17 @@ async def _snapshot_and_cleanup(
         except Exception:
             pass
         await asyncio.to_thread(sandbox.remove, force=True)
+        source_image_id = getattr(sandbox, "source_image_id", None)
+        if source_image_id:
+            try:
+                await asyncio.to_thread(client.images.remove, source_image_id, force=True)
+            except Exception as e:
+                logger.warning(
+                    "Failed to remove source snapshot image %s for thread %s: %s",
+                    source_image_id,
+                    thread_id,
+                    e,
+                )
         await store_snapshot_status(thread_id, True)
         logger.info("Snapshot pushed, container+local image removed for thread %s", thread_id)
     else:
