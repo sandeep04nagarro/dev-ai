@@ -127,6 +127,9 @@ SecretsManager.load()
 
 logger = logging.getLogger(__name__)
 
+if SecretsManager.load():
+    logger.info("SECRETS LOADED")
+
 # if os.environ.get("DEBUG_MODE", False):
 if SecretsManager.get("DEBUG_MODE") in ("1", "true", "True", "on", "yes"):
     logger.setLevel(logging.DEBUG)

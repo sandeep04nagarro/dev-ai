@@ -9,9 +9,9 @@ import os
 logger = logging.getLogger(__name__)
 
 _SCOPE_TO_SECRET: dict[str, str] = {
-    "dev": "dev-ai-agents",
-    "staging": "dev-ai-agents",
-    "prod": "dev-ai-agents",
+    "dev": "dev-ai-agents-secret-manager",
+    "staging": "dev-ai-agents-secret-manager",
+    "prod": "dev-ai-agents-secret-manager",
 }
 
 
@@ -44,11 +44,12 @@ class SecretsManager:
             cls._loaded = True
             return
 
-        resolved_region = region or os.environ.get("AWS_REGION", "us-east-1")
+        resolved_region = region or os.environ.get("AWS_REGION", "ap-south-1")
 
         try:
             client = boto3.client("secretsmanager", region_name=resolved_region)
             response = client.get_secret_value(SecretId=resolved_name)
+            logger.info("%s is the response from the client", response)
         except ClientError as exc:
             logger.error(
                 "Failed to fetch secret %r from AWS Secrets Manager (%s): %s",
@@ -60,6 +61,7 @@ class SecretsManager:
             return
 
         secret_string: str | None = response.get("SecretString")
+        logger.info("%s is the secret String", secret_name)
         if not secret_string:
             logger.warning("Secret %r has no SecretString — nothing to load", resolved_name)
             cls._loaded = True
@@ -67,6 +69,7 @@ class SecretsManager:
 
         try:
             payload: dict[str, str] = json.loads(secret_string)
+            logger.info("%s is the payload", payload)
         except json.JSONDecodeError:
             logger.error("Secret %r is not valid JSON — cannot parse key-value pairs", resolved_name)
             cls._loaded = True
@@ -96,6 +99,7 @@ class SecretsManager:
     def get(cls, key: str, default: str | None = None) -> str | None:
         if not cls._loaded:
             cls.load()
+        logger.info("%s is loaded with value %s", key, cls._secrets.get(key))
         return cls._secrets.get(key) or os.environ.get(key, default)
 
     @classmethod
