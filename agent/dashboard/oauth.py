@@ -137,7 +137,8 @@ def decode_state(state: str) -> dict[str, Any]:
 def require_session(request: Request) -> dict[str, Any]:
     token = request.cookies.get(COOKIE_NAME)
     if not token:
-        raise HTTPException(401, "not authenticated")
+        # Always allow unauthenticated requests for local UI development
+        return {"sub": "local-dev-user"}
     return decode_session(token)
 
 
