@@ -5,6 +5,7 @@ import logging
 import os
 
 from agent.utils.thread_ops import langgraph_client
+from agent.utils.secrets import SecretsManager
 from .thread_api import _DASHBOARD_SOURCE, _run_status_to_agent_status, _metadata_repo
 
 logger = logging.getLogger(__name__)
@@ -12,7 +13,8 @@ logger = logging.getLogger(__name__)
 
 def _default_model_id() -> str:
     """Label for threads whose metadata predates per-thread model tracking."""
-    return os.environ.get("LLM_MODEL_ID") or "Unspecified"
+    # return os.environ.get("LLM_MODEL_ID") or "Unspecified"
+    return SecretsManager.get("LLM_MODEL_ID") or "Unspecified"
 
 
 async def get_dashboard_metrics(login: str) -> Dict[str, Any]:

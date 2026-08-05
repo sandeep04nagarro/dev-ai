@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import os
+# import os
 import logging
 from typing import Any
 
@@ -11,11 +11,13 @@ from langgraph_sdk import get_client
 from langgraph_sdk.client import LangGraphClient
 
 # from .langsmith import create_langsmith_feedback, delete_langsmith_feedback
+from .secrets import SecretsManager
 from .slack import lookup_slack_run_mapping
 
 logger = logging.getLogger(__name__)
 
-LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL","http://localhost:2024")
+# LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL","http://localhost:2024")
+LANGGRAPH_URL = SecretsManager.get("LANGGRAPH_URL", "http://localhost:2024")
 
 FEEDBACK_REACTIONS: dict[str, float] = {
     "+1": 1.0,

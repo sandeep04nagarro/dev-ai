@@ -3,17 +3,23 @@
 from __future__ import annotations
 
 import logging
-import os
+
+# import os
 import time
 
 import httpx
 import jwt
 
+from agent.utils.secrets import SecretsManager
+
 logger = logging.getLogger(__name__)
 
-GITHUB_APP_ID = os.environ.get("GITHUB_APP_ID", "")
-GITHUB_APP_PRIVATE_KEY = os.environ.get("GITHUB_APP_PRIVATE_KEY", "")
-GITHUB_APP_INSTALLATION_ID = os.environ.get("GITHUB_APP_INSTALLATION_ID", "")
+# GITHUB_APP_ID = os.environ.get("GITHUB_APP_ID", "")
+# GITHUB_APP_PRIVATE_KEY = os.environ.get("GITHUB_APP_PRIVATE_KEY", "")
+# GITHUB_APP_INSTALLATION_ID = os.environ.get("GITHUB_APP_INSTALLATION_ID", "")
+GITHUB_APP_ID = SecretsManager.get("GITHUB_APP_ID", "")
+GITHUB_APP_PRIVATE_KEY = SecretsManager.get("GITHUB_APP_PRIVATE_KEY", "")
+GITHUB_APP_INSTALLATION_ID = SecretsManager.get("GITHUB_APP_INSTALLATION_ID", "")
 
 
 def _generate_app_jwt() -> str:

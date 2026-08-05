@@ -41,6 +41,8 @@ from agent.server import (
     graph_loaded_for_execution,
 )
 
+from agent.utils.secrets import SecretsManager
+
 from .reviewer_diff import compute_diff_line_set, fetch_pr_diff
 from .reviewer_findings import (
     list_findings as list_findings_async,
@@ -708,8 +710,10 @@ async def get_reviewer_agent(config: RunnableConfig) -> Pregel:
         subagent_effort = reasoning_effort
     else:
         model_id, reasoning_effort = await get_team_default_model("reviewer")
-        if os.environ.get("LLM_MODEL_ID","deepseek-v4-flash"):
-            model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
+        # if os.environ.get("LLM_MODEL_ID","deepseek-v4-flash"):
+        if SecretsManager.get("LLM_MODEL_ID","deepseek-v4-flash"):
+            # model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
+            model_id = SecretsManager.get("LLM_MODEL_ID","deepseek-v4-flash")
             logger.info("Using LLM_MODEL_ID config override: %s", model_id)
 
         logger.info(
@@ -719,8 +723,10 @@ async def get_reviewer_agent(config: RunnableConfig) -> Pregel:
         )
 
         subagent_model_id, subagent_effort = await get_team_default_subagent_model("reviewer")
-        if os.environ.get("LLM_MODEL_ID","deepseek-v4-flash"):
-            subagent_model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
+        # if os.environ.get("LLM_MODEL_ID","deepseek-v4-flash"):
+        if SecretsManager.get("LLM_MODEL_ID","deepseek-v4-flash"):
+            # subagent_model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
+            subagent_model_id = SecretsManager.get("LLM_MODEL_ID","deepseek-v4-flash")
             logger.info(
                 "Using LLM_MODEL_ID environment override for subagent: %s", subagent_model_id
             )

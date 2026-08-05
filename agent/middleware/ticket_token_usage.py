@@ -32,6 +32,7 @@ from langgraph_sdk import get_client
 from agent.utils.config import TokenLogConfig
 TOKEN_USAGE_LOG_FILE = TokenLogConfig.USAGE_LOG_FILE
 from agent.utils.jira import post_jira_comment, update_jira_comment
+from agent.utils.secrets import SecretsManager
 from agent.utils.token_profiler import PhaseTokenLedger
 
 logger = logging.getLogger(__name__)
@@ -144,7 +145,8 @@ class TicketTokenUsageMiddleware(AgentMiddleware):
             return None
 
         jira_env_ok = all(
-            os.environ.get(k) for k in ["JIRA_API_TOKEN", "JIRA_EMAIL", "JIRA_DOMAIN"]
+            # os.environ.get(k) for k in ["JIRA_API_TOKEN", "JIRA_EMAIL", "JIRA_DOMAIN"]
+            SecretsManager.get(k) for k in ["JIRA_API_TOKEN", "JIRA_EMAIL", "JIRA_DOMAIN"]
         )
         logger.debug("aafter_agent: ticket_id=%s jira_env_configured=%s", ticket_id, jira_env_ok)
         if not jira_env_ok:

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-import os
+
+# import os
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
@@ -17,7 +18,9 @@ from ..encryption import encrypt_token
 from .github_app import get_github_app_installation_token_with_expiry
 from .github_token import get_github_token_from_thread
 from .github_user_email_map import GITHUB_USER_EMAIL_MAP
+
 # from .linear import comment_on_linear_issue
+from agent.utils.secrets import SecretsManager
 from .slack import post_slack_ephemeral_message, post_slack_thread_reply
 
 logger = logging.getLogger(__name__)
@@ -27,9 +30,12 @@ client = get_client()
 # LANGSMITH_API_KEY = os.environ.get("LANGSMITH_API_KEY_PROD", "")
 # LANGSMITH_API_URL = cfg.LANGSMITH_ENDPOINT
 # LANGSMITH_HOST_API_URL = cfg.LANGSMITH_HOST_API_URL
-GITHUB_OAUTH_PROVIDER_ID = os.environ.get("GITHUB_OAUTH_PROVIDER_ID", "")
-X_SERVICE_AUTH_JWT_SECRET = os.environ.get("X_SERVICE_AUTH_JWT_SECRET", "")
-USER_ID_API_KEY_MAP = os.environ.get("USER_ID_API_KEY_MAP", "")
+# GITHUB_OAUTH_PROVIDER_ID = os.environ.get("GITHUB_OAUTH_PROVIDER_ID", "")
+# X_SERVICE_AUTH_JWT_SECRET = os.environ.get("X_SERVICE_AUTH_JWT_SECRET", "")
+# USER_ID_API_KEY_MAP = os.environ.get("USER_ID_API_KEY_MAP", "")
+GITHUB_OAUTH_PROVIDER_ID = SecretsManager.get("GITHUB_OAUTH_PROVIDER_ID", "")
+X_SERVICE_AUTH_JWT_SECRET = SecretsManager.get("X_SERVICE_AUTH_JWT_SECRET", "")
+USER_ID_API_KEY_MAP = SecretsManager.get("USER_ID_API_KEY_MAP", "")
 
 logger.debug(
     "Auth env snapshot: " \

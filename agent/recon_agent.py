@@ -20,12 +20,14 @@ from agent.server import (
 from agent.tools import fetch_url, http_request, web_search
 from agent.utils.model import fallback_model_id_for, make_model, provider_model_kwargs
 from agent.utils.sandbox_paths import aresolve_sandbox_work_dir
+from agent.utils.secrets import SecretsManager
 from agent.utils.tracing import get_langfuse_handler
 from agent.utils.tracing_diagnostics import _AttrsStore
 
 logger = logging.getLogger(__name__)
 
-if os.environ.get("DEBUG_MODE",False):
+# if os.environ.get("DEBUG_MODE",False):
+if SecretsManager.get("DEBUG_MODE",False):
     logger.setLevel(logging.DEBUG)
 
 
@@ -43,7 +45,8 @@ async def get_recon_agent(config: RunnableConfig) -> Pregel:
     sandbox_backend = await ensure_sandbox_for_thread(thread_id)
     work_dir = await aresolve_sandbox_work_dir(sandbox_backend)
 
-    model_id = os.environ.get("RECON_MODEL_ID","deepseek-v4-flash")
+    # model_id = os.environ.get("RECON_MODEL_ID","deepseek-v4-flash")
+    model_id = SecretsManager.get("RECON_MODEL_ID","deepseek-v4-flash")
     model_kwargs = provider_model_kwargs(model_id, None, max_tokens=4000)
     model = make_model(model_id, **model_kwargs)
 

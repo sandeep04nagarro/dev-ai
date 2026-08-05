@@ -5,6 +5,7 @@ from agent.utils.config import SandboxConfig, PromptConfig
 
 from .utils.authorship import CollaboratorIdentity
 from .utils.github_comments import UNTRUSTED_GITHUB_COMMENT_OPEN_TAG
+from agent.utils.secrets import SecretsManager
 
 logger = logging.getLogger(__name__)
 
@@ -519,7 +520,8 @@ def construct_system_prompt(
 
     gh_auth_prefix = "GH_TOKEN=dummy " if SandboxConfig.TYPE == "langsmith" else ""
 
-    enable_checklist = os.environ.get("ENABLE_PR_QUALITY_CHECKLIST", "false").lower() == "true"
+    # enable_checklist = os.environ.get("ENABLE_PR_QUALITY_CHECKLIST", "false").lower() == "true"
+    enable_checklist = SecretsManager.get("ENABLE_PR_QUALITY_CHECKLIST", "false").lower() == "true"
     checklist_template = PR_QUALITY_CHECKLIST_TEMPLATE if enable_checklist else ""
     checklist_instructions = PR_QUALITY_CHECKLIST_INSTRUCTIONS if enable_checklist else ""
 

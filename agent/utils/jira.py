@@ -4,19 +4,25 @@ from __future__ import annotations
 
 import base64
 import logging
-import os
+
+# import os
 import re
 from typing import Any
 
 import httpx
 
+from agent.utils.secrets import SecretsManager
+
 # from agent.utils.langsmith import get_langsmith_trace_url
 
 logger = logging.getLogger(__name__)
 
-JIRA_API_TOKEN = os.environ.get("JIRA_API_TOKEN", "")
-JIRA_EMAIL = os.environ.get("JIRA_EMAIL", "")
-JIRA_DOMAIN = os.environ.get("JIRA_DOMAIN", "")  # e.g., your-domain.atlassian.net
+# JIRA_API_TOKEN = os.environ.get("JIRA_API_TOKEN", "")
+# JIRA_EMAIL = os.environ.get("JIRA_EMAIL", "")
+# JIRA_DOMAIN = os.environ.get("JIRA_DOMAIN", "")  # e.g., your-domain.atlassian.net
+JIRA_API_TOKEN = SecretsManager.get("JIRA_API_TOKEN", "")
+JIRA_EMAIL = SecretsManager.get("JIRA_EMAIL", "")
+JIRA_DOMAIN = SecretsManager.get("JIRA_DOMAIN", "")  # e.g., your-domain.atlassian.net
 
 JIRA_BASE_URL = f"https://{JIRA_DOMAIN}/rest/api/3"
 

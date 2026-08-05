@@ -12,6 +12,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
+from agent.utils.secrets import SecretsManager
+
 from agent.dashboard.project_repos import (
     ProjectRepoUpdate,
     api_get_project_repos,
@@ -112,14 +114,16 @@ _ADMIN_DEP = Depends(_admin_session)
 
 
 def _api_base_url() -> str:
-    v = os.environ.get("DASHBOARD_API_BASE_URL","").rstrip("/")
+    # v = os.environ.get("DASHBOARD_API_BASE_URL","").rstrip("/")
+    v = (SecretsManager.get("DASHBOARD_API_BASE_URL") or "").rstrip("/")
     if not v:
         raise HTTPException(500, "DASHBOARD_API_BASE_URL not configured")
     return v
 
 
 def _frontend_base_url() -> str:
-    v = os.environ.get("DASHBOARD_BASE_URL","").rstrip("/")
+    # v = os.environ.get("DASHBOARD_BASE_URL","").rstrip("/")
+    v = (SecretsManager.get("DASHBOARD_BASE_URL") or "").rstrip("/")
     if not v:
         raise HTTPException(500, "DASHBOARD_BASE_URL not configured")
     return v
@@ -160,7 +164,8 @@ def _clear_state_cookie(response: Response) -> None:
 
 @router.get("/auth/login")
 async def auth_login(request: Request, redirect_to: str | None = None) -> RedirectResponse:
-    client_id = os.environ.get("GITHUB_APP_CLIENT_ID", "")
+    # client_id = os.environ.get("GITHUB_APP_CLIENT_ID", "")
+    client_id = SecretsManager.get("GITHUB_APP_CLIENT_ID", "")
     if not client_id:
         raise HTTPException(500, "GITHUB_APP_CLIENT_ID not configured")
     safe_redirect = sanitize_redirect_to(redirect_to) or _frontend_base_url()

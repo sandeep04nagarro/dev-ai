@@ -23,15 +23,20 @@ from agent.integrations.localstack_registry import LocalStackRegistry
 from agent.utils.config import DockerConfig
 from agent.utils.snapshot_state import PERSISTED, set_snapshot_state
 
+from agent.utils.secrets import SecretsManager
+
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.skipif(
-        not os.environ.get("SANDBOX_SNAPSHOT_ENABLED", "").lower()
+        # not os.environ.get("SANDBOX_SNAPSHOT_ENABLED", "").lower()
+        # in ("1", "true", "on", "yes"),
+        not SecretsManager.get("SANDBOX_SNAPSHOT_ENABLED", "").lower()
         in ("1", "true", "on", "yes"),
         reason="SANDBOX_SNAPSHOT_ENABLED must be set",
     ),
     pytest.mark.skipif(
-        os.environ.get("SANDBOX_REGISTRY_TYPE", "") != "localstack",
+        # os.environ.get("SANDBOX_REGISTRY_TYPE", "") != "localstack",
+        SecretsManager.get("SANDBOX_REGISTRY_TYPE", "") != "localstack",
         reason="SANDBOX_REGISTRY_TYPE must be localstack",
     ),
 ]
@@ -53,7 +58,8 @@ def docker_client():
 
 @pytest.fixture(scope="module")
 def localstack_repo():
-    registry_uri = os.environ.get("SANDBOX_REGISTRY_URI", "http://localhost:4566")
+    # registry_uri = os.environ.get("SANDBOX_REGISTRY_URI", "http://localhost:4566")
+    registry_uri = SecretsManager.get("SANDBOX_REGISTRY_URI", "http://localhost:4566")
     result = subprocess.run(
         [
             "aws", "--endpoint-url", registry_uri,
@@ -87,7 +93,8 @@ def _clear_state():
 @pytest.mark.integration
 def test_full_snapshot_cycle(docker_client, localstack_repo):
     registry = LocalStackRegistry(
-        endpoint=os.environ.get("SANDBOX_REGISTRY_URI", "http://localhost:4566")
+        # endpoint=os.environ.get("SANDBOX_REGISTRY_URI", "http://localhost:4566")
+        endpoint=SecretsManager.get("SANDBOX_REGISTRY_URI", "http://localhost:4566")
     )
 
     set_snapshot_state(THREAD_ID, None)

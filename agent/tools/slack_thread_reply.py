@@ -1,17 +1,19 @@
 import asyncio
-import os
+# import os
 from typing import Any
 
 from langgraph.config import get_config
 from langgraph_sdk import get_client
 
+from agent.utils.secrets import SecretsManager
 from agent.utils.slack import (
     convert_mentions_to_slack_format,
     post_slack_thread_reply_with_ts,
     store_slack_message_run_mapping,
 )
 
-LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL","http://localhost:2024")
+# LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL","http://localhost:2024")
+LANGGRAPH_URL = SecretsManager.get("LANGGRAPH_URL", "http://localhost:2024")
 
 
 def slack_thread_reply(message: str) -> dict[str, Any]:

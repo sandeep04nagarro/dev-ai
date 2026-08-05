@@ -41,6 +41,7 @@ from agent.utils.jira import (
 )
 from agent.utils.repo import extract_repo_from_text
 from agent.utils.repo_selector import select_repos_for_ticket
+from agent.utils.secrets import SecretsManager
 
 from .dashboard import router as dashboard_router
 from .dashboard.agent_overrides import (
@@ -123,9 +124,15 @@ from .utils.slack_feedback import (
 )
 from .utils.thread_ops import is_thread_active, queue_message_for_thread
 
+SecretsManager.load()
+
 logger = logging.getLogger(__name__)
 
-if os.environ.get("DEBUG_MODE", False):
+if SecretsManager.load():
+    logger.info("SECRETS LOADED")
+
+# if os.environ.get("DEBUG_MODE", False):
+if SecretsManager.get("DEBUG_MODE") in ("1", "true", "True", "on", "yes"):
     logger.setLevel(logging.DEBUG)
 
 
@@ -149,8 +156,8 @@ def _dashboard_origins() -> list[str]:
     """
     origins: list[str] = []
     for value in (
-        os.environ.get("DASHBOARD_BASE_URL", ""),
-        os.environ.get("DASHBOARD_ALLOWED_ORIGINS", ""),
+        SecretsManager.get("DASHBOARD_BASE_URL", ""),
+        SecretsManager.get("DASHBOARD_ALLOWED_ORIGINS", ""),
     ):
         for origin in value.split(","):
             origin = origin.strip().rstrip("/")
@@ -165,6 +172,7 @@ if not DASHBOARD_ALLOWED_ORIGINS:
         "No dashboard CORS origins configured — set DASHBOARD_BASE_URL or "
         "DASHBOARD_ALLOWED_ORIGINS, or browser requests will be blocked."
     )
+
 if DASHBOARD_ALLOWED_ORIGINS:
     app.add_middleware(
         CORSMiddleware,
@@ -177,10 +185,13 @@ if DASHBOARD_ALLOWED_ORIGINS:
 app.include_router(dashboard_router)
 
 # LINEAR_WEBHOOK_SECRET = os.environ.get("LINEAR_WEBHOOK_SECRET", "")
-JIRA_WEBHOOK_SECRET = os.environ.get("JIRA_WEBHOOK_SECRET", "")
+# JIRA_WEBHOOK_SECRET = os.environ.get("JIRA_WEBHOOK_SECRET", "")
+JIRA_WEBHOOK_SECRET = SecretsManager.get("JIRA_WEBHOOK_SECRET", "")
 JIRA_BOT_NAME = JiraConfig.BOT_NAME
-GITHUB_WEBHOOK_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "")
-SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET", "")
+# GITHUB_WEBHOOK_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "")
+GITHUB_WEBHOOK_SECRET = SecretsManager.get("GITHUB_WEBHOOK_SECRET", "")
+# SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET", "")
+SLACK_SIGNING_SECRET = SecretsManager.get("SLACK_SIGNING_SECRET", "")
 SLACK_BOT_USER_ID = SlackConfig.BOT_USER_ID
 SLACK_BOT_USERNAME = SlackConfig.BOT_USERNAME
 DEFAULT_REPO_OWNER = RepoConfig.DEFAULT_OWNER
@@ -188,8 +199,10 @@ DEFAULT_REPO_NAME = RepoConfig.DEFAULT_NAME
 SLACK_REPO_OWNER = RepoConfig.SLACK_OWNER or RepoConfig.DEFAULT_OWNER
 SLACK_REPO_NAME = RepoConfig.SLACK_NAME or RepoConfig.DEFAULT_NAME
 
-LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL", "http://localhost:2024")
-REVIEWER_ENABLED = os.environ.get("REVIEWER_ENABLED", "")
+# LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL", "http://localhost:2024")
+# REVIEWER_ENABLED = os.environ.get("REVIEWER_ENABLED", "")
+LANGGRAPH_URL = SecretsManager.get("LANGGRAPH_URL", "http://localhost:2024")
+REVIEWER_ENABLED = SecretsManager.get("REVIEWER_ENABLED", "")
 GITHUB_APP_NAME = RepoConfig.GITHUB_APP_NAME.strip()
 
 _AGENT_VERSION_METADATA: dict[str, str] = (
@@ -1674,8 +1687,10 @@ def build_jira_issue_prompt(
             "This issue contains attachments. Please run the following commands to download them into your workspace before beginning your analysis:\n\n"
             "```bash\n"
         )
-        jira_email = os.environ.get("JIRA_EMAIL", "")
-        jira_token = os.environ.get("JIRA_API_TOKEN", "")
+        # jira_email = os.environ.get("JIRA_EMAIL", "")
+        # jira_token = os.environ.get("JIRA_API_TOKEN", "")
+        jira_email = SecretsManager.get("JIRA_EMAIL", "")
+        jira_token = SecretsManager.get("JIRA_API_TOKEN", "")
         for att in attachments:
             url = att.get("content")
             filename = att.get("filename")
@@ -1754,8 +1769,10 @@ def build_recon_jira_issue_prompt(
             "This issue contains attachments. Run these commands to download them:\n\n"
             "```bash\n"
         )
-        jira_email = os.environ.get("JIRA_EMAIL", "")
-        jira_token = os.environ.get("JIRA_API_TOKEN", "")
+        # jira_email = os.environ.get("JIRA_EMAIL", "")
+        # jira_token = os.environ.get("JIRA_API_TOKEN", "")
+        jira_email = SecretsManager.get("JIRA_EMAIL", "")
+        jira_token = SecretsManager.get("JIRA_API_TOKEN", "")
         for att in attachments:
             url = att.get("content")
             filename = att.get("filename")
@@ -1848,12 +1865,14 @@ async def process_jira_issue(
     logger.debug(
         "Layer 0 tier=%s, RECON_ENABLED=%s, issue_key=%s",
         tier,
-        os.environ.get("RECON_ENABLED", False),
+        # os.environ.get("RECON_ENABLED", False),
+        SecretsManager.get("RECON_ENABLED"),
         issue_key,
     )
 
     recon_findings = None
-    if tier is None and os.environ.get("RECON_ENABLED", False) == "true":
+    # if tier is None and os.environ.get("RECON_ENABLED", False) == "true":
+    if tier is None and SecretsManager.get("RECON_ENABLED") in ("1", "true", "True", "on", "yes"):
         logger.debug("Starting recon flow for %s — tier=ambiguous", issue_key)
         # Check for existing recon findings via thread metadata
         existing_findings, existing_ticket_hash = None, None
@@ -1921,7 +1940,8 @@ If these findings still apply to this ticket, confirm reuse and exit.
                 "Invoking recon agent — thread_id=%s, step_limit=%d, model=%s",
                 thread_id,
                 recon_step_limit,
-                os.environ.get("RECON_MODEL_ID", "deepseek-v4-flash"),
+                # os.environ.get("RECON_MODEL_ID", "deepseek-v4-flash"),
+                SecretsManager.get("RECON_MODEL_ID", "deepseek-v4-flash"),
             )
             recon_state = await langgraph_client.runs.wait(
                 thread_id,
@@ -1984,7 +2004,8 @@ If these findings still apply to this ticket, confirm reuse and exit.
 
     # Set model based on tier (only when explicitly light)
     if tier == "light":
-        configurable["agent_model_id"] = os.environ.get("RECON_MODEL_ID", "deepseek-v4-flash")
+        # configurable["agent_model_id"] = os.environ.get("RECON_MODEL_ID", "deepseek-v4-flash")
+        configurable["agent_model_id"] = SecretsManager.get("RECON_MODEL_ID", "deepseek-v4-flash")
         configurable["agent_effort"] = "low"
         logger.debug("Set light model: %s", configurable["agent_model_id"])
 

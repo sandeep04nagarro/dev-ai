@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import os
+# import os
 import logging
 import re
 import uuid
@@ -12,10 +12,12 @@ from langgraph_sdk.client import LangGraphClient
 
 from ..reviewer_findings import list_findings
 # from .langsmith import create_langsmith_feedback, delete_langsmith_feedback
+from agent.utils.secrets import SecretsManager
 
 logger = logging.getLogger(__name__)
 
-LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL","http://localhost:2024")
+# LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL","http://localhost:2024")
+LANGGRAPH_URL = SecretsManager.get("LANGGRAPH_URL", "http://localhost:2024")
 
 GITHUB_FEEDBACK_REACTIONS: dict[str, float] = {
     "+1": 1.0,
