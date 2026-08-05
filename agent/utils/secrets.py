@@ -61,7 +61,6 @@ class SecretsManager:
             return
 
         secret_string: str | None = response.get("SecretString")
-        logger.info("%s is the secret String", secret_name)
         if not secret_string:
             logger.warning("Secret %r has no SecretString — nothing to load", resolved_name)
             cls._loaded = True
@@ -69,7 +68,6 @@ class SecretsManager:
 
         try:
             payload: dict[str, str] = json.loads(secret_string)
-            logger.info("%s is the payload", payload)
         except json.JSONDecodeError:
             logger.error("Secret %r is not valid JSON — cannot parse key-value pairs", resolved_name)
             cls._loaded = True
@@ -99,7 +97,6 @@ class SecretsManager:
     def get(cls, key: str, default: str | None = None) -> str | None:
         if not cls._loaded:
             cls.load()
-        logger.info("%s is loaded with value %s", key, cls._secrets.get(key))
         return cls._secrets.get(key) or os.environ.get(key, default)
 
     @classmethod
