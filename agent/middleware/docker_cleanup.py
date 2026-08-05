@@ -14,6 +14,7 @@ from langgraph.config import get_config
 from langgraph.runtime import Runtime
 
 from agent.integrations.docker import DockerSandbox
+from agent.utils.config import DockerConfig
 from agent.utils.sandbox_state import SANDBOX_BACKENDS, unwrap_sandbox_backend
 from agent.utils.secrets import SecretsManager
 from agent.utils.snapshot import create_registry
@@ -40,6 +41,8 @@ SNAPSHOT_ENABLED = SecretsManager.get("SANDBOX_SNAPSHOT_ENABLED", "").lower() in
     "on",
     "yes",
 )
+
+TIMEOUT = int(DockerConfig.TIMEOUT)
 
 
 @after_agent
@@ -103,7 +106,7 @@ async def _snapshot_and_cleanup(
 
     run_id = configurable.get("langgraph_run_id") or str(uuid4())
     container_id = sandbox.id
-    client = await asyncio.to_thread(docker.from_env)
+    client = await asyncio.to_thread(docker.from_env, timeout=TIMEOUT)
 
     await asyncio.to_thread(sandbox.stop, timeout=5)
 
@@ -136,6 +139,17 @@ async def _snapshot_and_cleanup(
         except Exception:
             pass
         await asyncio.to_thread(sandbox.remove, force=True)
+        source_image_id = getattr(sandbox, "source_image_id", None)
+        if source_image_id:
+            try:
+                await asyncio.to_thread(client.images.remove, source_image_id, force=True)
+            except Exception as e:
+                logger.warning(
+                    "Failed to remove source snapshot image %s for thread %s: %s",
+                    source_image_id,
+                    thread_id,
+                    e,
+                )
         await store_snapshot_status(thread_id, True)
         logger.info("Snapshot pushed, container+local image removed for thread %s", thread_id)
     else:

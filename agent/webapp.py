@@ -19,6 +19,7 @@ from langchain_core.messages.content import create_text_block
 from langgraph_sdk import get_client
 from langgraph_sdk.client import LangGraphClient
 
+import agent.bootstrap  # noqa: F401  — must precede any module that reads os.environ
 from agent.utils.complexity_classifier import (
     decide_tier,
     parse_recon_output,
@@ -145,10 +146,33 @@ app = FastAPI(
     # lifespan=lifespan
 )
 
-DASHBOARD_ALLOWED_ORIGINS: list[str] = [
-    # o.strip() for o in os.environ.get("DASHBOARD_ALLOWED_ORIGINS", "").split(",") if o.strip()
-    o.strip() for o in (SecretsManager.get("DASHBOARD_ALLOWED_ORIGINS") or "").split(",") if o.strip()
-]
+def _dashboard_origins() -> list[str]:
+    """Browser origins allowed to call ``/dashboard/api/*``.
+
+    Both variables accept a comma-separated list. Unset ones drop out entirely:
+    a ``None`` left in the list matches no origin, so CORSMiddleware would
+    install itself and then omit ``Access-Control-Allow-Origin`` on every
+    response — a failure that looks like the middleware is missing.
+    """
+    origins: list[str] = []
+    for value in (
+        SecretsManager.get("DASHBOARD_BASE_URL", ""),
+        SecretsManager.get("DASHBOARD_ALLOWED_ORIGINS", ""),
+    ):
+        for origin in value.split(","):
+            origin = origin.strip().rstrip("/")
+            if origin and origin not in origins:
+                origins.append(origin)
+    return origins
+
+
+DASHBOARD_ALLOWED_ORIGINS: list[str] = _dashboard_origins()
+if not DASHBOARD_ALLOWED_ORIGINS:
+    logger.warning(
+        "No dashboard CORS origins configured — set DASHBOARD_BASE_URL or "
+        "DASHBOARD_ALLOWED_ORIGINS, or browser requests will be blocked."
+    )
+
 if DASHBOARD_ALLOWED_ORIGINS:
     app.add_middleware(
         CORSMiddleware,

@@ -28,6 +28,7 @@ class DockerConfig:
     CPU_COUNT: str = "2"
     NETWORK: str = "bridge"
     SECCOMP_PROFILE: str = ""
+    TIMEOUT: str = "300"
 
 
 class LocalSandboxConfig:

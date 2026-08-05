@@ -22,6 +22,7 @@ from fastapi import HTTPException
 from langgraph_sdk import get_client
 from pydantic import BaseModel, field_validator
 
+from agent.utils.secrets import SecretsManager
 from ..encryption import decrypt_token, encrypt_token
 from .oauth import expires_at_from_github_response, refresh_user_access_token
 from .options import SUPPORTED_MODEL_IDS, model_supports_effort
@@ -73,7 +74,9 @@ class ProfileUpdate(BaseModel):
 
 
 def _client():
-    return get_client()
+    import os
+    # return get_client(url=os.environ.get("LANGGRAPH_URL", "http://localhost:2024"))
+    return get_client(url=SecretsManager.get("LANGGRAPH_URL", "http://localhost:2024"))
 
 
 async def _get_value(namespace: list[str], key: str) -> dict[str, Any] | None:
