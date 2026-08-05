@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import boto3
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +18,13 @@ _SCOPE_TO_SECRET: dict[str, str] = {
 
 
 class SecretsManager:
+
+    """
+    Singleton Secret Manager Class:
+    Loads the secrets from AWS Secret MAnager once
+    and stores them in an in-memory dict. 
+    """
+
     _secrets: dict[str, str] = {}
     _loaded: bool = False
 
@@ -26,9 +35,7 @@ class SecretsManager:
         secret_name: str | None = None,
         region: str | None = None,
         scope_override: str | None = None,
-    ) -> None:
-        import boto3
-        from botocore.exceptions import ClientError
+    ) -> None:      
 
         if cls._loaded:
             logger.warning("SecretsManager.load() called more than once — skipping")
