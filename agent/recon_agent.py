@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import Any
 
 from deepagents import create_deep_agent
@@ -27,7 +26,7 @@ from agent.utils.tracing_diagnostics import _AttrsStore
 logger = logging.getLogger(__name__)
 
 # if os.environ.get("DEBUG_MODE",False):
-if SecretsManager.get("DEBUG_MODE",False):
+if SecretsManager.get("DEBUG_MODE", False):
     logger.setLevel(logging.DEBUG)
 
 
@@ -46,7 +45,7 @@ async def get_recon_agent(config: RunnableConfig) -> Pregel:
     work_dir = await aresolve_sandbox_work_dir(sandbox_backend)
 
     # model_id = os.environ.get("RECON_MODEL_ID","deepseek-v4-flash")
-    model_id = SecretsManager.get("RECON_MODEL_ID","deepseek-v4-flash")
+    model_id = SecretsManager.get("RECON_MODEL_ID", "deepseek-v4-flash")
     model_kwargs = provider_model_kwargs(model_id, None, max_tokens=4000)
     model = make_model(model_id, **model_kwargs)
 

@@ -6,6 +6,7 @@ import pytest
 from langgraph.graph.state import RunnableConfig
 
 from agent import reviewer
+from agent.middleware import check_message_queue_before_model
 
 
 def test_reviewer_system_prompt_formats_without_keyerror() -> None:
@@ -99,7 +100,7 @@ async def test_reviewer_uses_cached_thread_token_for_slack_review_request() -> N
     mock_get_thread_token.assert_awaited_once_with("reviewer-thread-id")
     mock_resolve_token.assert_not_called()
     middleware = create_agent.call_args.kwargs["middleware"]
-    assert reviewer.check_message_queue_before_model in middleware
+    assert check_message_queue_before_model in middleware
 
 
 @pytest.mark.asyncio
@@ -149,7 +150,10 @@ async def test_reviewer_applies_eval_model_and_effort_overrides() -> None:
     assert main_model_call.kwargs["effort"] == "high"
     subagent_model_call = make_model.call_args_list[1]
     assert subagent_model_call.args == ("openai:gpt-5.5",)
-    assert subagent_model_call.kwargs["reasoning"] == {"effort": "low"}
+    # provider_model_kwargs only sends `reasoning` for OpenAI o-series models
+    # (see is_openai_reasoning_model); passing it to others raises TypeError in
+    # the OpenAI client, so gpt-5.5 must not carry a reasoning kwarg.
+    assert "reasoning" not in subagent_model_call.kwargs
 
 
 @pytest.mark.asyncio

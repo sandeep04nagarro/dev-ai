@@ -52,7 +52,6 @@ from typing import Any
 from uuid import UUID
 
 from langchain_core.callbacks import BaseCallbackHandler
-from langchain_core.messages import AIMessage
 from langchain_core.outputs import LLMResult
 
 logger = logging.getLogger(__name__)
@@ -73,7 +72,13 @@ ALL_PHASES = [
     PHASE_REVIEW,
 ]
 
-_EMPTY_PHASE: dict[str, int] = {"prompt_tokens": 0, "cache_read_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+_EMPTY_PHASE: dict[str, int] = {
+    "prompt_tokens": 0,
+    "cache_read_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0,
+}
+
 
 def _new_phase_breakdown() -> dict[str, dict[str, int]]:
     return {phase: dict(_EMPTY_PHASE) for phase in ALL_PHASES}
@@ -83,6 +88,7 @@ def _new_phase_breakdown() -> dict[str, dict[str, int]]:
 # PhaseTokenLedger — per-issue singleton
 # ---------------------------------------------------------------------------
 
+
 class PhaseTokenLedger:
     """Accumulate token counts by phase for a single Jira/Linear issue.
 
@@ -91,7 +97,7 @@ class PhaseTokenLedger:
     """
 
     _lock: threading.Lock = threading.Lock()
-    _registry: dict[str, "PhaseTokenLedger"] = {}
+    _registry: dict[str, PhaseTokenLedger] = {}
 
     def __init__(self, issue_key: str) -> None:
         self._issue_key = issue_key
@@ -103,7 +109,7 @@ class PhaseTokenLedger:
     # ------------------------------------------------------------------
 
     @classmethod
-    def get(cls, issue_key: str) -> "PhaseTokenLedger":
+    def get(cls, issue_key: str) -> PhaseTokenLedger:
         """Return (or create) the ledger for *issue_key*."""
         with cls._lock:
             if issue_key not in cls._registry:
@@ -120,7 +126,9 @@ class PhaseTokenLedger:
     # Accumulation
     # ------------------------------------------------------------------
 
-    def add(self, phase: str, prompt: int, cache_read: int, completion: int, total: int | None = None) -> None:
+    def add(
+        self, phase: str, prompt: int, cache_read: int, completion: int, total: int | None = None
+    ) -> None:
         """Add token counts to a specific phase bucket."""
         if phase not in ALL_PHASES:
             logger.warning("Unknown profiling phase '%s', defaulting to tool_execution", phase)
@@ -153,7 +161,12 @@ class PhaseTokenLedger:
             prompt = sum(v["prompt_tokens"] for v in self._phases.values())
             cache_read = sum(v["cache_read_tokens"] for v in self._phases.values())
             completion = sum(v["completion_tokens"] for v in self._phases.values())
-            return {"prompt": prompt, "cache_read": cache_read, "completion": completion, "total": prompt + completion}
+            return {
+                "prompt": prompt,
+                "cache_read": cache_read,
+                "completion": completion,
+                "total": prompt + completion,
+            }
 
     def build_markdown_table(self) -> str:
         """Build a markdown table showing the per-phase token breakdown."""
@@ -161,14 +174,14 @@ class PhaseTokenLedger:
         totals = self.get_totals()
 
         header = "| Phase | Input | Cache Read | Output | Total |\n"
-        sep    = "|-------|-------|------------|--------|-------|\n"
+        sep = "|-------|-------|------------|--------|-------|\n"
         rows: list[str] = []
 
         phase_labels = {
             PHASE_MULTI_REPO_SELECTION: "Repo Selection",
-            PHASE_PLANNING:             "Planning",
-            PHASE_TOOL_EXECUTION:       "Tool Execution (Search/Edit)",
-            PHASE_REVIEW:               "Review / Verification",
+            PHASE_PLANNING: "Planning",
+            PHASE_TOOL_EXECUTION: "Tool Execution (Search/Edit)",
+            PHASE_REVIEW: "Review / Verification",
         }
 
         for phase_key in ALL_PHASES:
@@ -195,6 +208,7 @@ class PhaseTokenLedger:
 # Convenience helper for repo_selector.py
 # ---------------------------------------------------------------------------
 
+
 def record_repo_selection_tokens(
     issue_key: str,
     response: Any,
@@ -219,7 +233,11 @@ def record_repo_selection_tokens(
     ledger.add(PHASE_MULTI_REPO_SELECTION, prompt, cache_read, completion, total)
     logger.info(
         "PhaseProfiler RepoSelection issue=%s input=%d cache_read=%d output=%d total=%d",
-        issue_key, prompt, cache_read, completion, total
+        issue_key,
+        prompt,
+        cache_read,
+        completion,
+        total,
     )
 
 
@@ -239,7 +257,7 @@ def _extract_usage(response: Any) -> tuple[int, int, int, int]:
         prompt = int(usage_md.get("input_tokens", usage_md.get("prompt_tokens", 0)))
         completion = int(usage_md.get("output_tokens", usage_md.get("completion_tokens", 0)))
         total = int(usage_md.get("total_tokens", 0))
-        
+
         input_details = usage_md.get("input_token_details") or usage_md.get("prompt_tokens_details")
         if isinstance(input_details, dict):
             cache_read = int(input_details.get("cache_read", input_details.get("cached_tokens", 0)))
@@ -257,10 +275,12 @@ def _extract_usage(response: Any) -> tuple[int, int, int, int]:
                 prompt = int(u.get("prompt_tokens", u.get("input_tokens", 0)))
                 completion = int(u.get("completion_tokens", u.get("output_tokens", 0)))
                 total = int(u.get("total_tokens", u.get("total", 0)))
-                
+
                 input_details = u.get("prompt_tokens_details") or u.get("input_token_details")
                 if isinstance(input_details, dict):
-                    cache_read = int(input_details.get("cached_tokens", input_details.get("cache_read", 0)))
+                    cache_read = int(
+                        input_details.get("cached_tokens", input_details.get("cache_read", 0))
+                    )
                 else:
                     cache_read = int(u.get("cache_read_input_tokens", 0))
 
@@ -275,6 +295,7 @@ def _extract_usage(response: Any) -> tuple[int, int, int, int]:
 # ---------------------------------------------------------------------------
 # PhaseTokenProfilerCallback — LangChain callback handler
 # ---------------------------------------------------------------------------
+
 
 class PhaseTokenProfilerCallback(BaseCallbackHandler):
     """LangChain callback that categorises each LLM call into a phase.
@@ -365,9 +386,7 @@ class PhaseTokenProfilerCallback(BaseCallbackHandler):
         self._run_has_tool_context.pop(run_id, None)
 
         if not total:
-            logger.debug(
-                "PhaseProfiler on_llm_end run_id=%s: no usage found, skipping", run_id
-            )
+            logger.debug("PhaseProfiler on_llm_end run_id=%s: no usage found, skipping", run_id)
             return
 
         ledger = PhaseTokenLedger.get(self._issue_key)
@@ -427,10 +446,12 @@ class PhaseTokenProfilerCallback(BaseCallbackHandler):
                 prompt = int(u.get("input_tokens", u.get("prompt_tokens", 0)))
                 completion = int(u.get("output_tokens", u.get("completion_tokens", 0)))
                 total = int(u.get("total_tokens", u.get("total", 0)))
-                
+
                 input_details = u.get("input_token_details") or u.get("prompt_tokens_details")
                 if isinstance(input_details, dict):
-                    cache_read = int(input_details.get("cache_read", input_details.get("cached_tokens", 0)))
+                    cache_read = int(
+                        input_details.get("cache_read", input_details.get("cached_tokens", 0))
+                    )
                 else:
                     cache_read = int(u.get("cache_read_input_tokens", 0))
 
@@ -451,11 +472,17 @@ class PhaseTokenProfilerCallback(BaseCallbackHandler):
                         p = int(usage_md.get("input_tokens", usage_md.get("prompt_tokens", 0)))
                         c = int(usage_md.get("output_tokens", usage_md.get("completion_tokens", 0)))
                         t = int(usage_md.get("total_tokens", 0)) or (p + c)
-                        
-                        input_details = usage_md.get("input_token_details") or usage_md.get("prompt_tokens_details")
+
+                        input_details = usage_md.get("input_token_details") or usage_md.get(
+                            "prompt_tokens_details"
+                        )
                         cr = 0
                         if isinstance(input_details, dict):
-                            cr = int(input_details.get("cache_read", input_details.get("cached_tokens", 0)))
+                            cr = int(
+                                input_details.get(
+                                    "cache_read", input_details.get("cached_tokens", 0)
+                                )
+                            )
                         else:
                             cr = int(usage_md.get("cache_read_input_tokens", 0))
 

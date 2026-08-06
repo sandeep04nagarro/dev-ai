@@ -21,7 +21,7 @@ from agent.middleware.sanitize_thinking_blocks import SanitizeThinkingBlocksMidd
 from agent.middleware.sanitize_tool_inputs import SanitizeToolInputsMiddleware
 from agent.middleware.ticket_token_usage import TicketTokenUsageMiddleware
 from agent.middleware.tool_error_handler import ToolErrorMiddleware
-from agent.utils.config import SandboxConfig, MiddlewareConfig
+from agent.utils.config import MiddlewareConfig, SandboxConfig
 
 MODEL_CALL_RECURSION_LIMIT = MiddlewareConfig.MODEL_CALL_RECURSION_LIMIT
 RECON_MODEL_CALL_RECURSION_LIMIT = MiddlewareConfig.RECON_MODEL_CALL_RECURSION_LIMIT

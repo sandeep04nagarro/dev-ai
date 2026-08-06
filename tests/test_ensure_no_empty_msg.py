@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from agent.middleware.ensure_no_empty_msg import (
@@ -78,6 +79,9 @@ class TestCheckIfModelMessagedUser:
 
         assert check_if_model_messaged_user(messages) is True
 
+    @pytest.mark.skip(
+        reason="Linear integration is commented out repo-wide; re-enable this test with the feature."
+    )
     def test_returns_true_for_linear_comment(self) -> None:
         messages = [
             ToolMessage(content="commented", tool_call_id="123", name="linear_comment"),
@@ -144,6 +148,9 @@ class TestEnsureNoEmptyMsgNotify:
 
         assert result is None
 
+    @pytest.mark.skip(
+        reason="Linear integration is commented out repo-wide; re-enable this test with the feature."
+    )
     def test_returns_none_with_linear_comment(self) -> None:
         empty_ai = AIMessage(content="")
         state = {

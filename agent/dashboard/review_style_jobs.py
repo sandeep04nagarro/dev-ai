@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
 
 from langgraph_sdk import get_client
 
+from agent.utils.secrets import SecretsManager
 
 from ..review_style_collector import (
     collect_review_samples,
@@ -23,8 +23,6 @@ from .review_styles import (
     update_review_style,
 )
 
-from agent.utils.secrets import SecretsManager
-
 logger = logging.getLogger(__name__)
 
 _ASSISTANT_ID = "review_style_analyzer"
@@ -33,7 +31,7 @@ _ASSISTANT_ID = "review_style_analyzer"
 def _client():
     """LangGraph SDK client for the current deployment (same resolution as webapp)."""
     # langgraph_url = os.environ.get("LANGGRAPH_URL","http://localhost:2024")
-    langgraph_url = SecretsManager.get("LANGGRAPH_URL","http://localhost:2024")
+    langgraph_url = SecretsManager.get("LANGGRAPH_URL", "http://localhost:2024")
     if langgraph_url:
         return get_client(url=langgraph_url)
     return get_client()

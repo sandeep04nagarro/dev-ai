@@ -117,7 +117,9 @@ def get_langfuse_handler() -> object | None:
         return _langfuse_handler
 
     # if not bool(os.environ.get("LANGFUSE_SECRET_KEY") and os.environ.get("LANGFUSE_PUBLIC_KEY")):
-    if not bool(SecretsManager.get("LANGFUSE_SECRET_KEY") and SecretsManager.get("LANGFUSE_PUBLIC_KEY")):
+    if not bool(
+        SecretsManager.get("LANGFUSE_SECRET_KEY") and SecretsManager.get("LANGFUSE_PUBLIC_KEY")
+    ):
         return None
 
     try:

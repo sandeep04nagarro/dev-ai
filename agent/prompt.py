@@ -1,11 +1,11 @@
 import logging
 from pathlib import Path
-import os
-from agent.utils.config import SandboxConfig, PromptConfig
+
+from agent.utils.config import PromptConfig, SandboxConfig
+from agent.utils.secrets import SecretsManager
 
 from .utils.authorship import CollaboratorIdentity
 from .utils.github_comments import UNTRUSTED_GITHUB_COMMENT_OPEN_TAG
-from agent.utils.secrets import SecretsManager
 
 logger = logging.getLogger(__name__)
 
@@ -119,18 +119,19 @@ FILE_MANAGEMENT_SECTION = """---
 - Use the appropriate package manager to install dependencies if needed."""
 
 
-TASK_EXECUTION_SECTION = " ".join(("""---
+TASK_EXECUTION_SECTION = " ".join(
+    (
+        """---
 
 ### Task Execution
 
 If you make changes, communicate updates in the source channel:""",
-# - Use `linear_comment` for Linear-triggered tasks.
-
-"""- Use `slack_thread_reply` for Slack-triggered tasks.
+        # - Use `linear_comment` for Linear-triggered tasks.
+        """- Use `slack_thread_reply` for Slack-triggered tasks.
 - For GitHub-triggered tasks, use `{gh_auth_prefix}gh issue comment` or `{gh_auth_prefix}gh pr comment` only after confirming the target issue or pull request.
 - If the task was not triggered from a known source (no Slack thread,""",
-#  no Linear ticket,
-   """no GitHub issue), skip the notification step.
+        #  no Linear ticket,
+        """no GitHub issue), skip the notification step.
 
 If a Slack- or GitHub-triggered request is asking you to review a GitHub pull request, do not clone the repo, edit files, commit, push, or open a PR. Call `request_pr_review` once with the GitHub PR URL, then reply in the source channel to say whether the review was started or why it could not be started, and stop.
 
@@ -150,13 +151,17 @@ For questions or status checks (no code changes needed):
 
 1. **Answer** — Gather the information needed to respond.
 2. **Comment** — """,
-# Call `linear_comment` or 
-"""`slack_thread_reply` for """,
-# Linear/
-"""Slack. For GitHub-triggered tasks, use `{gh_auth_prefix}gh issue comment` or `{gh_auth_prefix}gh pr comment`. Never leave a question unanswered.
-3. **Do not submit changes** — Do not commit, push, or open/update a PR unless the user then asks for changes."""))
+        # Call `linear_comment` or
+        """`slack_thread_reply` for """,
+        # Linear/
+        """Slack. For GitHub-triggered tasks, use `{gh_auth_prefix}gh issue comment` or `{gh_auth_prefix}gh pr comment`. Never leave a question unanswered.
+3. **Do not submit changes** — Do not commit, push, or open/update a PR unless the user then asks for changes.""",
+    )
+)
 
-TOOL_USAGE_SECTION = " ".join(("""---
+TOOL_USAGE_SECTION = " ".join(
+    (
+        """---
 
 ### Tool Usage
 
@@ -169,11 +174,9 @@ Fetches a URL and converts HTML to markdown. Use for web pages. Synthesize the c
 #### `http_request`
 Make HTTP requests (GET, POST, PUT, DELETE, etc.) to APIs. Use this for API calls with custom headers, methods, params, or request bodies — not for fetching web pages.
 Do not use this tool for GitHub API calls. Use `{gh_auth_prefix}gh` in the sandbox for GitHub operations.""",
-
-# #### `linear_comment`
-# Posts a comment to a Linear ticket given a `ticket_id`. Call this after opening/updating the pull request to notify stakeholders and include the PR link. You can tag Linear users with `@username` (their Linear display name).
-
-"""#### `slack_thread_reply`
+        # #### `linear_comment`
+        # Posts a comment to a Linear ticket given a `ticket_id`. Call this after opening/updating the pull request to notify stakeholders and include the PR link. You can tag Linear users with `@username` (their Linear display name).
+        """#### `slack_thread_reply`
 Posts a message to the active Slack thread. Use this for clarifying questions, mid-run progress updates, and final summaries when the task was triggered from Slack. You can call it multiple times during a run — if you're about to do something long-running (cloning a large repo, big refactors, running heavy test suites), post a short status update first so the user knows what's happening. Always end the run with a final reply that summarizes what you did or answers the question. Do not post a status reply before quick, single-tool answers — only when the user would otherwise be left waiting.
 If `slack_thread_reply` returns `success: False`, treat it like any other tool failure. Read the `slack_error` and `hint` fields. Never emit a final response message as if the user received it when the Slack post failed.
 Format messages using Slack's mrkdwn format, NOT standard Markdown.
@@ -183,7 +186,9 @@ Format messages using Slack's mrkdwn format, NOT standard Markdown.
     To mention/tag a user, use `<@USER_ID>` (e.g. `<@U06KD8BFY95>`). You can find user IDs in the conversation context next to display names (e.g. `@Name(U06KD8BFY95)`).
 
 #### GitHub via `gh`
-Use `{gh_auth_prefix}gh <command>` for GitHub operations: repository discovery, cloning, issues, pull requests, reviews, comments, labels, check status, and workflow operations. For local working-tree state, use `git` directly. Never pass a real GitHub token to `gh`."""))
+Use `{gh_auth_prefix}gh <command>` for GitHub operations: repository discovery, cloning, issues, pull requests, reviews, comments, labels, check status, and workflow operations. For local working-tree state, use `git` directly. Never pass a real GitHub token to `gh`.""",
+    )
+)
 
 
 TOOL_BEST_PRACTICES_SECTION = """---
@@ -284,7 +289,9 @@ When reviewing code changes:
 9. **Prefer pre-made scripts** for testing, formatting, linting, etc. If unsure whether a script exists, search for it first."""
 
 
-COMMIT_PR_SECTION = " ".join(("""---
+COMMIT_PR_SECTION = " ".join(
+    (
+        """---
 
 ### Committing Changes and Opening Pull Requests
 
@@ -315,8 +322,8 @@ When you have completed your implementation, follow these steps in order:
    **PR Title** (under 70 characters):
    ```
    <type>: <concise description>""",
-# [closes {linear_project_id}-{linear_issue_number}]
-   """```
+        # [closes {linear_project_id}-{linear_issue_number}]
+        """```
    Where type is one of: `fix` (bug fix), `feat` (new feature), `chore` (maintenance), `ci` (CI/CD)
 
    **PR Body** (keep under 10 lines total. the more concise the better):
@@ -350,12 +357,12 @@ When you have completed your implementation, follow these steps in order:
 **IMPORTANT: If `git push` or `gh` returns "403", "Permission denied", or another permanent authorization failure, do not retry. Report the error to the user immediately and stop.**
 
 4. **Notify the source** immediately after pushing and, when applicable, PR creation/update succeeds. Include a brief summary plus the PR link or branch URL:""",
-#    - Linear-triggered: use `linear_comment` with an `@mention` of the user who triggered the task
-   """- Slack-triggered: use `slack_thread_reply`
+        #    - Linear-triggered: use `linear_comment` with an `@mention` of the user who triggered the task
+        """- Slack-triggered: use `slack_thread_reply`
    - GitHub-triggered: use `{gh_auth_prefix}gh issue comment` or `{gh_auth_prefix}gh pr comment`
    - If the task was not triggered from a known source channel (no Slack thread,""",
-    #  no Linear ticket, 
-     """no GitHub issue context), skip the notification step.
+        #  no Linear ticket,
+        """no GitHub issue context), skip the notification step.
 
    Example:
    ```
@@ -366,7 +373,9 @@ When you have completed your implementation, follow these steps in order:
    - <change 2>
    ```
 
-For code-change tasks, push the branch and notify the appropriate source once implementation is complete and code quality checks pass. Include the PR link when you opened or updated a PR; otherwise include the branch URL."""))
+For code-change tasks, push the branch and notify the appropriate source once implementation is complete and code quality checks pass. Include the PR link when you opened or updated a PR; otherwise include the branch URL.""",
+    )
+)
 
 
 COLLABORATION_TEMPLATE = """---
@@ -413,7 +422,7 @@ PR_QUALITY_CHECKLIST_TEMPLATE = """
 PR_QUALITY_CHECKLIST_INSTRUCTIONS = """
    **Checklist Instructions:**
    Before filling this out, inspect the repo to determine its ACTUAL tooling (package.json scripts, Makefile, tox.ini/pyproject, CI config, etc.). Do not assume a stack — report the exact command you ran.
-   
+
    Rules:
    1. Check off (`[x]`) only items you personally verified locally — never check a box on assumption.
    2. For every unchecked (`[ ]`) item, give a specific one-sentence reason — not a generic "skipped due to time."

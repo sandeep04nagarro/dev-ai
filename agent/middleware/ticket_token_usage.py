@@ -18,7 +18,6 @@ and:
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from typing import Any
@@ -30,10 +29,11 @@ from langgraph.runtime import Runtime
 from langgraph_sdk import get_client
 
 from agent.utils.config import TokenLogConfig
-TOKEN_USAGE_LOG_FILE = TokenLogConfig.USAGE_LOG_FILE
 from agent.utils.jira import post_jira_comment, update_jira_comment
 from agent.utils.secrets import SecretsManager
 from agent.utils.token_profiler import PhaseTokenLedger
+
+TOKEN_USAGE_LOG_FILE = TokenLogConfig.USAGE_LOG_FILE
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,12 @@ class TicketTokenUsageMiddleware(AgentMiddleware):
 
     def __init__(self) -> None:
         """Initialise all usage counters to zero for a fresh run."""
-        self._run_accum: dict[str, int] = {"prompt": 0, "cache_read": 0, "completion": 0, "total": 0}
+        self._run_accum: dict[str, int] = {
+            "prompt": 0,
+            "cache_read": 0,
+            "completion": 0,
+            "total": 0,
+        }
 
     def after_model(self, state: AgentState, runtime: Runtime) -> dict[str, Any] | None:
         """Accumulate token usage from the latest model response (sync path)."""
@@ -146,7 +151,8 @@ class TicketTokenUsageMiddleware(AgentMiddleware):
 
         jira_env_ok = all(
             # os.environ.get(k) for k in ["JIRA_API_TOKEN", "JIRA_EMAIL", "JIRA_DOMAIN"]
-            SecretsManager.get(k) for k in ["JIRA_API_TOKEN", "JIRA_EMAIL", "JIRA_DOMAIN"]
+            SecretsManager.get(k)
+            for k in ["JIRA_API_TOKEN", "JIRA_EMAIL", "JIRA_DOMAIN"]
         )
         logger.debug("aafter_agent: ticket_id=%s jira_env_configured=%s", ticket_id, jira_env_ok)
         if not jira_env_ok:
@@ -175,7 +181,9 @@ class TicketTokenUsageMiddleware(AgentMiddleware):
             # Merge: take whichever is larger between the ledger and middleware
             # accumulator for each bucket (avoids double-counting).
             merged_prompt = max(self._run_accum["prompt"], ledger_totals["prompt"])
-            merged_cache_read = max(self._run_accum.get("cache_read", 0), ledger_totals.get("cache_read", 0))
+            merged_cache_read = max(
+                self._run_accum.get("cache_read", 0), ledger_totals.get("cache_read", 0)
+            )
             merged_completion = max(self._run_accum["completion"], ledger_totals["completion"])
             merged_total = merged_prompt + merged_completion
             run_total = {
@@ -270,8 +278,10 @@ class TicketTokenUsageMiddleware(AgentMiddleware):
             prompt = usage_md.get("input_tokens", usage_md.get("prompt_tokens", 0))
             completion = usage_md.get("output_tokens", usage_md.get("completion_tokens", 0))
             total = usage_md.get("total_tokens", 0)
-            
-            input_details = usage_md.get("input_token_details") or usage_md.get("prompt_tokens_details")
+
+            input_details = usage_md.get("input_token_details") or usage_md.get(
+                "prompt_tokens_details"
+            )
             if isinstance(input_details, dict):
                 cache_read = input_details.get("cache_read", input_details.get("cached_tokens", 0))
             else:
@@ -284,10 +294,12 @@ class TicketTokenUsageMiddleware(AgentMiddleware):
                     prompt = u.get("prompt_tokens", u.get("input_tokens", 0))
                     completion = u.get("completion_tokens", u.get("output_tokens", 0))
                     total = u.get("total_tokens", u.get("total", 0))
-                    
+
                     input_details = u.get("prompt_tokens_details") or u.get("input_token_details")
                     if isinstance(input_details, dict):
-                        cache_read = input_details.get("cached_tokens", input_details.get("cache_read", 0))
+                        cache_read = input_details.get(
+                            "cached_tokens", input_details.get("cache_read", 0)
+                        )
                     else:
                         cache_read = u.get("cache_read_input_tokens", 0)
 
@@ -338,13 +350,12 @@ def _read_ticket_total(metadata: dict[str, Any]) -> dict[str, int]:
 
 
 def _build_comment_body(ticket_id: str, total: dict[str, int], phase_table: str) -> str:
-    """Render the token-usage markdown body for a Jira comment.
-    """
+    """Render the token-usage markdown body for a Jira comment."""
     p = total["prompt"]
     cr = total.get("cache_read", 0)
     c = total["completion"]
     t = total["total"]
-    
+
     return (
         f"**Token Usage** · {ticket_id}\n"
         f"───────────────────────────\n\n"

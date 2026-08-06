@@ -8,8 +8,6 @@ on public repos even when the GitHub App is not installed on them.
 
 from __future__ import annotations
 
-import asyncio
-import os
 import logging
 import warnings
 
@@ -20,8 +18,11 @@ warnings.filterwarnings("ignore", module="langchain_core._api.deprecation")
 warnings.filterwarnings("ignore", message=".*Pydantic V1.*", category=UserWarning)
 
 from deepagents import create_deep_agent
-from deepagents.backends.protocol import SandboxBackendProtocol
 from langchain.agents.middleware import ModelCallLimitMiddleware
+
+from agent.utils.config import SandboxConfig
+from agent.utils.secrets import SecretsManager
+from agent.utils.tracing import get_langfuse_handler
 
 # from .integrations.langsmith import _configure_github_proxy
 from .middleware import SanitizeToolInputsMiddleware, ToolErrorMiddleware
@@ -34,12 +35,8 @@ from .server import (
     graph_loaded_for_execution,
 )
 from .tools.save_review_style import save_review_style_prompt
-from agent.utils.config import SandboxConfig
 from .utils.model import DEFAULT_LLM_REASONING, make_model, provider_model_kwargs
 from .utils.sandbox_paths import aresolve_sandbox_work_dir
-from .utils.sandbox_state import unwrap_sandbox_backend
-from agent.utils.secrets import SecretsManager
-from agent.utils.tracing import get_langfuse_handler
 
 logger = logging.getLogger(__name__)
 
@@ -125,11 +122,11 @@ async def get_review_style_analyzer(config: RunnableConfig) -> Pregel:
     full_name = str(configurable.get("review_style_full_name") or "owner/repo")
     owner, _, name = full_name.partition("/")
     samples_text = str(configurable.get("review_style_samples_text") or "")
-    github_token = configurable.get("review_style_github_token")
+    # github_token = configurable.get("review_style_github_token")
     # if isinstance(github_token, str) and github_token:
     #     await _configure_sandbox_github_proxy(sandbox_backend, github_token)
     # LLM_MODEL_ID = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
-    LLM_MODEL_ID = SecretsManager.get("LLM_MODEL_ID","deepseek-v4-flash")
+    LLM_MODEL_ID = SecretsManager.get("LLM_MODEL_ID", "deepseek-v4-flash")
     model_id = LLM_MODEL_ID or DEFAULT_LLM_MODEL_ID
     if LLM_MODEL_ID:
         logger.info("Using LLM_MODEL_ID config override for style analyzer: %s", model_id)

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hmac
 import logging
-import os
 from typing import Any
 
 import httpx
@@ -12,13 +11,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
-from agent.utils.secrets import SecretsManager
-
 from agent.dashboard.project_repos import (
     ProjectRepoUpdate,
     api_get_project_repos,
     api_set_project_repos,
 )
+from agent.utils.secrets import SecretsManager
 
 from .admin import is_admin
 from .enabled_repos import (

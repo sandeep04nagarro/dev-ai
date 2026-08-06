@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 def refresh_github_token() -> dict[str, Any]:
     """Refresh the GitHub App installation token in the sandbox.
 
-    Use this tool when the 'gh' CLI reports an authentication error or 
-    'Bad credentials', which typically happens if the GitHub token has expired 
+    Use this tool when the 'gh' CLI reports an authentication error or
+    'Bad credentials', which typically happens if the GitHub token has expired
     (they have a 1-hour TTL). This will re-authenticate the gh CLI in your sandbox.
 
     Returns:
@@ -41,7 +41,10 @@ async def _refresh_github_token_async(thread_id: str) -> dict[str, Any]:
 
     installation_token = await get_github_app_installation_token()
     if not installation_token:
-        return {"success": False, "error": "GitHub App is not configured or failed to generate token."}
+        return {
+            "success": False,
+            "error": "GitHub App is not configured or failed to generate token.",
+        }
 
     await asyncio.to_thread(
         sandbox_backend.execute,

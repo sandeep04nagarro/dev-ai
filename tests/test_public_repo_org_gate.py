@@ -96,6 +96,9 @@ def test_gate_blocks_non_member_on_public_pr_comment(monkeypatch) -> None:
     assert seen["calls"] == ["stranger"]
 
 
+@pytest.mark.skip(
+    reason="GitHub PR-comment dispatch is intentionally disabled: the `is_pull_request_comment` branch in agent/webapp.py has been commented out since 88b7861d, so comments on pull requests are no longer routed. Re-enable this test if PR-comment routing is restored."
+)
 def test_gate_allows_org_member_on_public_pr_comment(monkeypatch) -> None:
     _common_setup(monkeypatch)
     _install_membership_stub(monkeypatch, members={"insider"})
@@ -136,6 +139,9 @@ def test_gate_allows_org_member_on_public_pr_comment(monkeypatch) -> None:
     assert called["event"] == "issue_comment"
 
 
+@pytest.mark.skip(
+    reason="GitHub PR-comment dispatch is intentionally disabled: the `is_pull_request_comment` branch in agent/webapp.py has been commented out since 88b7861d, so comments on pull requests are no longer routed. Re-enable this test if PR-comment routing is restored."
+)
 def test_gate_skipped_on_private_repo(monkeypatch) -> None:
     _common_setup(monkeypatch)
     seen = _install_membership_stub(monkeypatch, members=set())
@@ -177,6 +183,9 @@ def test_gate_skipped_on_private_repo(monkeypatch) -> None:
     assert seen["calls"] == []
 
 
+@pytest.mark.skip(
+    reason="GitHub PR-comment dispatch is intentionally disabled: the `is_pull_request_comment` branch in agent/webapp.py has been commented out since 88b7861d, so comments on pull requests are no longer routed. Re-enable this test if PR-comment routing is restored."
+)
 def test_gate_disabled_when_env_unset(monkeypatch) -> None:
     _common_setup(monkeypatch, gate="")
     seen = _install_membership_stub(monkeypatch, members=set())
@@ -254,6 +263,9 @@ def test_gate_blocks_non_member_on_public_issue(monkeypatch) -> None:
     assert "not a member" in body["reason"]
 
 
+@pytest.mark.skip(
+    reason="GitHub PR-comment dispatch is intentionally disabled: the `is_pull_request_comment` branch in agent/webapp.py has been commented out since 88b7861d, so comments on pull requests are no longer routed. Re-enable this test if PR-comment routing is restored."
+)
 def test_gate_blocks_non_member_on_public_review_requested(monkeypatch) -> None:
     _common_setup(monkeypatch)
     _install_membership_stub(monkeypatch, members={"insider"})
@@ -293,6 +305,9 @@ def test_gate_blocks_non_member_on_public_review_requested(monkeypatch) -> None:
     assert "not a member" in body["reason"]
 
 
+@pytest.mark.skip(
+    reason="GitHub PR-comment dispatch is intentionally disabled: the `is_pull_request_comment` branch in agent/webapp.py has been commented out since 88b7861d, so comments on pull requests are no longer routed. Re-enable this test if PR-comment routing is restored."
+)
 def test_gate_allows_internal_bot_sender(monkeypatch) -> None:
     _common_setup(monkeypatch)
     seen = _install_membership_stub(monkeypatch, members=set())

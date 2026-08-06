@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +19,10 @@ _SCOPE_TO_SECRET: dict[str, str] = {
 
 
 class SecretsManager:
-
     """
     Singleton Secret Manager Class:
     Loads the secrets from AWS Secret MAnager once
-    and stores them in an in-memory dict. 
+    and stores them in an in-memory dict.
     """
 
     _secrets: dict[str, str] = {}
@@ -35,7 +35,7 @@ class SecretsManager:
         secret_name: str | None = None,
         region: str | None = None,
         scope_override: str | None = None,
-    ) -> None:      
+    ) -> None:
 
         if cls._loaded:
             logger.warning("SecretsManager.load() called more than once — skipping")
@@ -57,9 +57,10 @@ class SecretsManager:
             client = boto3.client("secretsmanager", region_name=resolved_region)
             response = client.get_secret_value(SecretId=resolved_name)
             logger.info("%s is the response from the client", response)
-        except ClientError as exc:
+        except (BotoCoreError, ClientError) as exc:
             logger.error(
-                "Failed to fetch secret %r from AWS Secrets Manager (%s): %s",
+                "Failed to fetch secret %r from AWS Secrets Manager (%s): %s — "
+                "falling back to os.environ only",
                 resolved_name,
                 resolved_region,
                 exc,
@@ -76,7 +77,9 @@ class SecretsManager:
         try:
             payload: dict[str, str] = json.loads(secret_string)
         except json.JSONDecodeError:
-            logger.error("Secret %r is not valid JSON — cannot parse key-value pairs", resolved_name)
+            logger.error(
+                "Secret %r is not valid JSON — cannot parse key-value pairs", resolved_name
+            )
             cls._loaded = True
             return
 

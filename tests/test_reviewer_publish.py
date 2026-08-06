@@ -277,6 +277,9 @@ def test_publish_review_forwards_trace_link_config_override() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(
+    reason="LangSmith trace links are commented out (get_langsmith_trace_url); re-enable this test with the feature."
+)
 async def test_resolve_review_trace_url_enabled_by_team_setting() -> None:
     from agent.tools.publish_review import _resolve_review_trace_url
 
@@ -296,6 +299,9 @@ async def test_resolve_review_trace_url_enabled_by_team_setting() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(
+    reason="LangSmith trace links are commented out (get_langsmith_trace_url); re-enable this test with the feature."
+)
 async def test_resolve_review_trace_url_disabled_by_team_setting() -> None:
     from agent.tools.publish_review import _resolve_review_trace_url
 
@@ -314,6 +320,9 @@ async def test_resolve_review_trace_url_disabled_by_team_setting() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(
+    reason="LangSmith trace links are commented out (get_langsmith_trace_url); re-enable this test with the feature."
+)
 async def test_resolve_review_trace_url_config_override_skips_team_lookup() -> None:
     from agent.tools.publish_review import _resolve_review_trace_url
 
