@@ -67,6 +67,9 @@ def _reaction_event(reaction: str = "thumbsup") -> dict[str, Any]:
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(
+    reason="LangSmith feedback integration is commented out in agent/utils/*_feedback.py; re-enable this test with the feature."
+)
 async def test_reaction_added_creates_feedback(monkeypatch: pytest.MonkeyPatch) -> None:
     client = _FakeClient()
     _store_message_mapping(client, "C123", "2.000")
@@ -104,6 +107,9 @@ async def test_reaction_added_creates_feedback(monkeypatch: pytest.MonkeyPatch) 
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(
+    reason="LangSmith feedback integration is commented out in agent/utils/*_feedback.py; re-enable this test with the feature."
+)
 async def test_reaction_added_skips_duplicate_event(monkeypatch: pytest.MonkeyPatch) -> None:
     client = _FakeClient()
     _store_message_mapping(client, "C123", "2.000")
@@ -119,6 +125,9 @@ async def test_reaction_added_skips_duplicate_event(monkeypatch: pytest.MonkeyPa
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(
+    reason="LangSmith feedback integration is commented out in agent/utils/*_feedback.py; re-enable this test with the feature."
+)
 async def test_reaction_removed_deletes_feedback_when_last_reaction_removed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -150,6 +159,9 @@ async def test_reaction_removed_deletes_feedback_when_last_reaction_removed(
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(
+    reason="LangSmith feedback integration is commented out in agent/utils/*_feedback.py; re-enable this test with the feature."
+)
 async def test_reaction_without_message_mapping_is_ignored(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -165,6 +177,9 @@ async def test_reaction_without_message_mapping_is_ignored(
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(
+    reason="LangSmith feedback integration is commented out in agent/utils/*_feedback.py; re-enable this test with the feature."
+)
 async def test_reaction_from_non_triggering_user_is_ignored(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -181,6 +196,9 @@ async def test_reaction_from_non_triggering_user_is_ignored(
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(
+    reason="LangSmith feedback integration is commented out in agent/utils/*_feedback.py; re-enable this test with the feature."
+)
 async def test_conflicting_reactions_clear_feedback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

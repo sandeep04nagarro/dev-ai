@@ -32,7 +32,9 @@ _DASHBOARD_STREAM_MODES: tuple[str, ...] = ("values", "updates", "messages-tuple
 
 def _agent_version_metadata() -> dict[str, str]:
     return (
-        {"AGENT_VERSION": BuildConfig.LANGCHAIN_REVISION_ID} if BuildConfig.LANGCHAIN_REVISION_ID else {}
+        {"AGENT_VERSION": BuildConfig.LANGCHAIN_REVISION_ID}
+        if BuildConfig.LANGCHAIN_REVISION_ID
+        else {}
     )
 
 

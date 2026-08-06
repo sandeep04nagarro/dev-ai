@@ -200,10 +200,6 @@ async def test_circuit_breaker_posts_one_user_notification() -> None:
             new_callable=AsyncMock,
         ) as mock_slack,
         patch(
-            "agent.middleware.sandbox_circuit_breaker.comment_on_linear_issue",
-            new_callable=AsyncMock,
-        ) as mock_linear,
-        patch(
             "agent.middleware.sandbox_circuit_breaker.post_github_comment",
             new_callable=AsyncMock,
         ) as mock_github,
@@ -212,5 +208,4 @@ async def test_circuit_breaker_posts_one_user_notification() -> None:
 
     assert result is None
     mock_slack.assert_awaited_once_with("C123", "171.123", SANDBOX_UNRECOVERABLE_MESSAGE)
-    mock_linear.assert_not_called()
     mock_github.assert_not_called()

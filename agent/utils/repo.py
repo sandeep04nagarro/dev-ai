@@ -24,7 +24,7 @@ def extract_repo_from_text(text: str, default_owner: str | None = None) -> dict[
     name: str | None = None
 
     if "repo:" in text or "repo " in text:
-        match = re.search(r"repo[: ]([a-zA-Z0-9_.\-/]+)", text)
+        match = re.search(r"repo[: ]\s*([a-zA-Z0-9_.\-/]+)", text)
         if match:
             value = match.group(1).rstrip("/")
             if "/" in value:

@@ -14,13 +14,13 @@ from langgraph.config import get_config
 from langgraph.graph.state import RunnableConfig
 from langgraph_sdk import get_client
 
+# from .linear import comment_on_linear_issue
+from agent.utils.secrets import SecretsManager
+
 from ..encryption import encrypt_token
 from .github_app import get_github_app_installation_token_with_expiry
 from .github_token import get_github_token_from_thread
 from .github_user_email_map import GITHUB_USER_EMAIL_MAP
-
-# from .linear import comment_on_linear_issue
-from agent.utils.secrets import SecretsManager
 from .slack import post_slack_ephemeral_message, post_slack_thread_reply
 
 logger = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ X_SERVICE_AUTH_JWT_SECRET = SecretsManager.get("X_SERVICE_AUTH_JWT_SECRET", "")
 USER_ID_API_KEY_MAP = SecretsManager.get("USER_ID_API_KEY_MAP", "")
 
 logger.debug(
-    "Auth env snapshot: " \
+    "Auth env snapshot: "
     # "LANGSMITH_API_KEY_PROD=%s LANGSMITH_ENDPOINT=%s "
     # "LANGSMITH_HOST_API_URL=%s " \
     "GITHUB_OAUTH_PROVIDER_ID=%s",

@@ -65,6 +65,7 @@ class RepoConfig:
     CONFIGURED_ADMINS: str = ""
     GITHUB_APP_NAME: str = "dev-ai-agent-nagarro[bot]"
 
+
 class ReconConfig:
     """Recon agent configuration."""
 

@@ -87,7 +87,9 @@ async def test_agent_uses_profile_subagent_model_override() -> None:
 
     subagent_call = make_model.call_args_list[1]
     assert subagent_call.args == ("openai:gpt-5.5",)
-    assert subagent_call.kwargs["reasoning"] == {"effort": "xhigh"}
+    # provider_model_kwargs only sends `reasoning` for OpenAI o-series models
+    # (see is_openai_reasoning_model); gpt-5.5 must not carry a reasoning kwarg.
+    assert "reasoning" not in subagent_call.kwargs
 
 
 @pytest.mark.asyncio

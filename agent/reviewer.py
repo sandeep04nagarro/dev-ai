@@ -16,7 +16,6 @@ agent for code review only:
 # ruff: noqa: E402
 
 import logging
-import os
 import re
 import warnings
 
@@ -40,7 +39,7 @@ from agent.server import (
     ensure_sandbox_for_thread,
     graph_loaded_for_execution,
 )
-
+from agent.utils.config import SandboxConfig
 from agent.utils.secrets import SecretsManager
 
 from .reviewer_diff import compute_diff_line_set, fetch_pr_diff
@@ -61,7 +60,6 @@ from .tools import (
     update_finding,
     web_search,
 )
-from agent.utils.config import SandboxConfig
 from .utils.agents_md import fetch_agents_md
 from .utils.auth import resolve_github_token
 from .utils.github_token import get_github_token_from_thread
@@ -711,9 +709,9 @@ async def get_reviewer_agent(config: RunnableConfig) -> Pregel:
     else:
         model_id, reasoning_effort = await get_team_default_model("reviewer")
         # if os.environ.get("LLM_MODEL_ID","deepseek-v4-flash"):
-        if SecretsManager.get("LLM_MODEL_ID","deepseek-v4-flash"):
+        if SecretsManager.get("LLM_MODEL_ID", "deepseek-v4-flash"):
             # model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
-            model_id = SecretsManager.get("LLM_MODEL_ID","deepseek-v4-flash")
+            model_id = SecretsManager.get("LLM_MODEL_ID", "deepseek-v4-flash")
             logger.info("Using LLM_MODEL_ID config override: %s", model_id)
 
         logger.info(
@@ -724,9 +722,9 @@ async def get_reviewer_agent(config: RunnableConfig) -> Pregel:
 
         subagent_model_id, subagent_effort = await get_team_default_subagent_model("reviewer")
         # if os.environ.get("LLM_MODEL_ID","deepseek-v4-flash"):
-        if SecretsManager.get("LLM_MODEL_ID","deepseek-v4-flash"):
+        if SecretsManager.get("LLM_MODEL_ID", "deepseek-v4-flash"):
             # subagent_model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
-            subagent_model_id = SecretsManager.get("LLM_MODEL_ID","deepseek-v4-flash")
+            subagent_model_id = SecretsManager.get("LLM_MODEL_ID", "deepseek-v4-flash")
             logger.info(
                 "Using LLM_MODEL_ID environment override for subagent: %s", subagent_model_id
             )
@@ -817,9 +815,8 @@ async def get_reviewer_agent(config: RunnableConfig) -> Pregel:
     # Phase-based token profiling — reviewer phase
     # ------------------------------------------------------------------
     _reviewer_configurable = config.get("configurable", {})
-    _reviewer_issue_key = (
-        _reviewer_configurable.get("jira_issue", {}).get("key")
-        or str(pr_number or thread_id)
+    _reviewer_issue_key = _reviewer_configurable.get("jira_issue", {}).get("key") or str(
+        pr_number or thread_id
     )
     _reviewer_phase_callback = PhaseTokenProfilerCallback(
         issue_key=str(_reviewer_issue_key),

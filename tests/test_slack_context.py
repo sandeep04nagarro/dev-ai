@@ -3,15 +3,12 @@ import asyncio
 import pytest
 
 from agent import webapp
-from agent.utils import slack as slack_utils
 from agent.utils.slack import (
-    TRACE_REPLY_TIPS,
     convert_mentions_to_slack_format,
     format_slack_messages_for_prompt,
     looks_like_slack_pr_review_command,
     parse_github_pr_url,
     parse_slack_review_command,
-    post_slack_trace_reply,
     replace_bot_mention_with_username,
     select_slack_context_messages,
     strip_bot_mention,
@@ -102,14 +99,14 @@ def test_strip_bot_mention_removes_bot_tag() -> None:
 
 def test_strip_bot_mention_removes_bot_username_tag() -> None:
     assert (
-        strip_bot_mention("@dev-agent please check", "UBOT", bot_username="open-swe")
+        strip_bot_mention("@dev-agent please check", "UBOT", bot_username="dev-agent")
         == "please check"
     )
 
 
 def test_replace_bot_mention_with_username() -> None:
     assert (
-        replace_bot_mention_with_username("<@UBOT> can you help?", "UBOT", "open-swe")
+        replace_bot_mention_with_username("<@UBOT> can you help?", "UBOT", "dev-agent")
         == "@dev-agent can you help?"
     )
 
@@ -215,74 +212,10 @@ def test_format_slack_messages_for_prompt_replaces_bot_id_mention_in_text() -> N
         [{"ts": "1.0", "text": "<@UBOT> status update?", "user": "U123"}],
         {"U123": "alice"},
         bot_user_id="UBOT",
-        bot_username="open-swe",
+        bot_username="dev-agent",
     )
 
     assert formatted == "@alice(U123): @dev-agent status update?"
-
-
-def test_post_slack_trace_reply_emits_tip_only_when_no_trace_url(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    posted: list[dict] = []
-
-    async def fake_post_slack_thread_reply_with_ts(
-        channel_id: str,
-        thread_ts: str,
-        text: str,
-        *,
-        unfurl_links: bool = True,
-        unfurl_media: bool = True,
-    ) -> tuple[str | None, str | None]:
-        posted.append({"text": text, "unfurl_links": unfurl_links, "unfurl_media": unfurl_media})
-        return "1.1", None
-
-    monkeypatch.setattr(
-        slack_utils, "post_slack_thread_reply_with_ts", fake_post_slack_thread_reply_with_ts
-    )
-    monkeypatch.setattr(slack_utils, "get_langsmith_trace_url", lambda thread_id: None)
-
-    asyncio.run(post_slack_trace_reply("C123", "1.0", "thread-id"))
-
-    assert len(posted) == 1
-    text = posted[0]["text"]
-    assert text.startswith("_Tip: ") and text.endswith("_")
-    assert any(tip in text for tip in TRACE_REPLY_TIPS)
-    assert posted[0]["unfurl_links"] is False
-    assert posted[0]["unfurl_media"] is False
-
-
-def test_post_slack_trace_reply_includes_trace_link_and_tip(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    posted: list[dict] = []
-
-    async def fake_post_slack_thread_reply_with_ts(
-        channel_id: str,
-        thread_ts: str,
-        text: str,
-        *,
-        unfurl_links: bool = True,
-        unfurl_media: bool = True,
-    ) -> tuple[str | None, str | None]:
-        posted.append({"text": text, "unfurl_links": unfurl_links, "unfurl_media": unfurl_media})
-        return "1.1", None
-
-    monkeypatch.setattr(
-        slack_utils, "post_slack_thread_reply_with_ts", fake_post_slack_thread_reply_with_ts
-    )
-    monkeypatch.setattr(slack_utils, "get_langsmith_trace_url", lambda thread_id: "https://smith/x")
-
-    asyncio.run(post_slack_trace_reply("C123", "1.0", "thread-id"))
-
-    assert len(posted) == 1
-    text = posted[0]["text"]
-    head, _, tip_line = text.partition("\n")
-    assert head == "<https://smith/x|View trace>"
-    assert tip_line.startswith("_Tip: ") and tip_line.endswith("_")
-    assert any(tip in tip_line for tip in TRACE_REPLY_TIPS)
-    assert posted[0]["unfurl_links"] is False
-    assert posted[0]["unfurl_media"] is False
 
 
 def test_select_slack_context_messages_detects_username_mention() -> None:
@@ -294,7 +227,7 @@ def test_select_slack_context_messages_detects_username_mention() -> None:
         ],
         "3.0",
         bot_user_id="UBOT",
-        bot_username="open-swe",
+        bot_username="dev-agent",
     )
 
     assert mode == "last_mention"
@@ -437,13 +370,6 @@ def _setup_slack_mention_fakes(
         captured["active_thread_id"] = thread_id
         return False
 
-    async def fake_post_slack_trace_reply(channel_id: str, thread_ts: str, thread_id: str) -> None:
-        captured["trace_reply"] = {
-            "channel_id": channel_id,
-            "thread_ts": thread_ts,
-            "thread_id": thread_id,
-        }
-
     class _FakeRunsClient:
         async def create(self, thread_id: str, graph: str, **kwargs) -> dict[str, str]:
             captured["run_create"] = {
@@ -469,11 +395,10 @@ def _setup_slack_mention_fakes(
         webapp, "resolve_slack_links_in_context", fake_resolve_slack_links_in_context
     )
     monkeypatch.setattr(webapp, "is_thread_active", fake_is_thread_active)
-    monkeypatch.setattr(webapp, "post_slack_trace_reply", fake_post_slack_trace_reply)
     monkeypatch.setattr(webapp, "get_client", lambda url: _FakeLangGraphClientForProcess())
 
 
-def test_process_slack_mention_creates_thread_first_run_with_trace_reply(
+def test_process_slack_mention_creates_thread_on_first_run(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: dict[str, object] = {}
@@ -510,12 +435,6 @@ def test_process_slack_mention_creates_thread_first_run_with_trace_reply(
         "thread_id": expected_thread_id,
         "metadata": {"repo": {"owner": "langchain-ai", "name": "open-swe"}},
     }
-    assert captured["trace_reply"] == {
-        "channel_id": "C123",
-        "thread_ts": thread_ts,
-        "thread_id": expected_thread_id,
-    }
-
     run_create = captured["run_create"]
     assert isinstance(run_create, dict)
     assert run_create["thread_id"] == expected_thread_id
@@ -535,10 +454,10 @@ def test_process_slack_mention_creates_thread_first_run_with_trace_reply(
     assert "## Latest Mention Request\ncontinue on the branch" in prompt_block["text"]
 
 
-def test_process_slack_mention_skips_trace_reply_on_followup_mention(
+def test_process_slack_mention_reuses_thread_on_followup_mention(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Subsequent mentions in a Slack thread should not post 'Working on it!'."""
+    """Subsequent mentions in a Slack thread reuse the existing thread."""
     captured: dict[str, object] = {}
     _setup_slack_mention_fakes(monkeypatch, captured)
 
@@ -567,7 +486,6 @@ def test_process_slack_mention_skips_trace_reply_on_followup_mention(
     )
 
     assert captured["thread_exists_check"] == expected_thread_id
-    assert "trace_reply" not in captured
     run_create = captured["run_create"]
     assert isinstance(run_create, dict)
     assert run_create["thread_id"] == expected_thread_id
@@ -618,9 +536,6 @@ def test_process_slack_mention_queues_active_thread_message(
         captured["queued"] = {"thread_id": thread_id, "message_content": message_content}
         return True
 
-    async def fake_post_slack_trace_reply(*args, **kwargs) -> None:
-        raise AssertionError("trace reply should not be posted for queued mid-run Slack messages")
-
     async def fake_thread_exists(thread_id: str) -> bool:
         return True
 
@@ -646,7 +561,6 @@ def test_process_slack_mention_queues_active_thread_message(
     monkeypatch.setattr(webapp, "fetch_image_block", fake_fetch_image_block)
     monkeypatch.setattr(webapp, "is_thread_active", fake_is_thread_active)
     monkeypatch.setattr(webapp, "queue_message_for_thread", fake_queue_message_for_thread)
-    monkeypatch.setattr(webapp, "post_slack_trace_reply", fake_post_slack_trace_reply)
     monkeypatch.setattr(webapp, "_thread_exists", fake_thread_exists)
     monkeypatch.setattr(webapp, "get_client", lambda url: _FakeLangGraphClientForProcess())
 

@@ -4,7 +4,6 @@ import hashlib
 import hmac
 import json
 import logging
-import os
 import uuid
 
 # from collections.abc import AsyncIterator
@@ -87,7 +86,6 @@ from .utils.github_comments import (
     fetch_pr_comments_since_last_tag,
     format_github_comment_body_for_prompt,
     get_thread_id_from_branch,
-    parse_github_review_command,
     react_to_github_comment,
     sanitize_github_comment_body,
     verify_github_signature,
@@ -145,6 +143,7 @@ if SecretsManager.get("DEBUG_MODE") in ("1", "true", "True", "on", "yes"):
 app = FastAPI(
     # lifespan=lifespan
 )
+
 
 def _dashboard_origins() -> list[str]:
     """Browser origins allowed to call ``/dashboard/api/*``.
@@ -2927,12 +2926,12 @@ async def process_github_pr_comment(payload: dict[str, Any], event_type: str) ->
             else:
                 logger.warning("Failed to persist branch_name metadata for thread %s", thread_id)
 
-        run_metadata = {
-            **_AGENT_VERSION_METADATA,
-            "langfuse_session_id": thread_id,  # noqa: F821
-            "langfuse_user_id": github_login or "unknown",
-        }
-    config = {  # noqa: F821
+    run_metadata = {
+        **_AGENT_VERSION_METADATA,
+        "langfuse_session_id": thread_id,
+        "langfuse_user_id": github_login or "unknown",
+    }
+    config = {
         "configurable": {
             "source": "github",
             "github_login": github_login,
@@ -2942,7 +2941,7 @@ async def process_github_pr_comment(payload: dict[str, Any], event_type: str) ->
         },
         "metadata": run_metadata,
     }
-    comment = payload.get("comment") or payload.get("review", {})
+    # comment = payload.get("comment") or payload.get("review", {})
     # is_review_request, _pr_url_override = parse_github_review_command(comment.get("body") or "")
 
     # email = GITHUB_USER_EMAIL_MAP.get(github_login, "")
@@ -2967,9 +2966,7 @@ async def process_github_pr_comment(payload: dict[str, Any], event_type: str) ->
         try:
             await persist_encrypted_github_token(thread_id, github_token, expires_at=expires_at)
         except Exception:
-            logger.warning(
-                "Could not persist bot token for PR review request thread %s", thread_id
-            )
+            logger.warning("Could not persist bot token for PR review request thread %s", thread_id)
 
     if not github_token:
         logger.warning("No GitHub token for thread %s, skipping", thread_id)
@@ -3397,7 +3394,6 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
     issue = payload.get("issue", {})
     pull_request = payload.get("pull_request", {})
     pr_author = (pull_request.get("user") or {}).get("login", "")
-    is_pull_request_comment = bool(event_type == "issue_comment" and issue.get("pull_request"))
     is_issue_comment = bool(event_type == "issue_comment" and not issue.get("pull_request"))
     is_issue_event = event_type == "issues"
     is_pull_request_event = event_type == "pull_request"
@@ -3513,8 +3509,7 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
         logger.debug("Ignoring unsupported GitHub %s action: %s", event_type, action)
         return {"status": "ignored", "reason": f"Unsupported GitHub {event_type} action: {action}"}
 
-    comment = payload.get("comment") or payload.get("review", {})
-    comment_body = (comment.get("body") or "") if comment else ""
+    # comment = payload.get("comment") or payload.get("review", {})
     if (
         event_type == "pull_request_review_comment"
         and _review_comment_reply_parent_id(payload) is not None

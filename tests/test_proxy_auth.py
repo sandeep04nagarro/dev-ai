@@ -1,5 +1,7 @@
 """Tests for GitHub proxy auth configuration."""
 
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import base64
@@ -7,6 +9,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+
+pytest.skip(
+    "agent.integrations.langsmith is currently commented out; re-enable this module "
+    "when the LangSmith sandbox provider is restored.",
+    allow_module_level=True,
+)
 
 from agent.integrations.langsmith import _configure_github_proxy
 
