@@ -36,7 +36,7 @@ __all__ = [
 ]
 
 DEV_AGENT_TAGS = ("@dev-agent",)
-_DEV_AGENT_MENTION_RE = re.compile(r"(?i)@(?:dev-agent)\b")
+_DEV_AGENT_MENTION_RE = re.compile(r"(?i)@(?:dev-agent-dev|dev-agent)\b")
 _REVIEW_COMMAND_RE = re.compile(r"(?i)\Areview(?:\s+(https?://\S+))?\s*\Z")
 UNTRUSTED_GITHUB_COMMENT_OPEN_TAG = "<dangerous-external-untrusted-users-comment>"
 UNTRUSTED_GITHUB_COMMENT_CLOSE_TAG = "</dangerous-external-untrusted-users-comment>"
@@ -89,12 +89,11 @@ def parse_github_review_command(body: str) -> tuple[bool, str | None]:
     """
     if not body:
         return False, None
-    # stripped = _DEV_AGENT_MENTION_RE.sub("", body).strip()
-    # match = _REVIEW_COMMAND_RE.match(stripped)
-    # if not match:
-    #     return False, None
-    # return True, match.group(1) or None
-    return True, None
+    stripped = _DEV_AGENT_MENTION_RE.sub("", body).strip()
+    match = _REVIEW_COMMAND_RE.match(stripped)
+    if not match:
+        return False, None
+    return True, match.group(1) or None
 
 
 def sanitize_github_comment_body(body: str) -> str:

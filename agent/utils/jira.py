@@ -58,6 +58,7 @@ def _headers() -> dict[str, str]:
 #   - Paragraphs          (everything else)
 # ---------------------------------------------------------------------------
 
+
 def _text_node(text: str) -> dict[str, Any]:
     return {"type": "text", "text": text}
 
@@ -79,8 +80,8 @@ def _link_node(text: str, href: str) -> dict[str, Any]:
 
 
 _INLINE_RE = re.compile(
-    r"\*\*(.+?)\*\*"        # **bold**
-    r"|`([^`]+)`"           # `inline code`
+    r"\*\*(.+?)\*\*"  # **bold**
+    r"|`([^`]+)`"  # `inline code`
     r"|\[([^\]]+)\]\((https?://[^\)]+)\)"  # [text](url)
 )
 
@@ -152,7 +153,7 @@ def _table_node(lines: list[str]) -> dict[str, Any] | None:
         |-------|-------|
         | val 1 | val 2 |
     """
-    rows_raw = [l for l in lines if re.match(r"^\s*\|", l)]
+    rows_raw = [line for line in lines if re.match(r"^\s*\|", line)]
     if len(rows_raw) < 2:  # noqa: PLR2004
         return None
 
@@ -301,6 +302,7 @@ def markdown_to_adf(markdown: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Jira API calls
 # ---------------------------------------------------------------------------
+
 
 async def fetch_jira_issue_details(issue_id_or_key: str) -> dict[str, Any] | None:
     """Fetch full issue details from Jira API including description and comments.

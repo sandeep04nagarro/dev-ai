@@ -10,6 +10,7 @@ def registry():
 
         return AwsEcrRegistry(
             registry_uri="123.dkr.ecr.us-east-1.amazonaws.com",
+            repo_name="agent-snapshots",
             region="us-east-1",
         )
 
@@ -77,24 +78,34 @@ def test_pull_image_latest_not_found_falls_back(registry):
 
 
 def test_list_tags_success(registry):
-    with patch(
-        "agent.integrations.aws_ecr_registry.subprocess.run"
-    ) as mock_run:
-        mock_run.return_value.stdout = '{"imageIds": [{"imageTag": "tag-1"}, {"imageTag": "tag-2"}]}'
-        mock_run.return_value.returncode = 0
+    mock_ecr = MagicMock()
+    mock_ecr.list_images.return_value = {
+        "imageIds": [
+            {"imageTag": "thread-1-run-b"},
+            {"imageTag": "thread-1-latest"},
+            {"imageTag": "thread-2-run-c"},
+            {"imageDigest": "sha256:untagged"},
+        ]
+    }
 
+    with patch("agent.integrations.aws_ecr_registry.boto3.client", return_value=mock_ecr):
         tags = registry.list_tags("thread-1")
 
-    assert tags == ["tag-1", "tag-2"]
+    mock_ecr.list_images.assert_called_once_with(repositoryName="agent-snapshots")
+    assert tags == ["thread-1-latest", "thread-1-run-b"]
 
 
-def test_list_tags_calledprocesserror(registry):
-    import subprocess
+def test_list_tags_client_error(registry):
+    from botocore.exceptions import ClientError
 
-    with patch(
-        "agent.integrations.aws_ecr_registry.subprocess.run",
-        side_effect=subprocess.CalledProcessError(1, "aws", stderr="error"),
-    ):
+    error = ClientError(
+        {"Error": {"Code": "RepositoryNotFoundException", "Message": "missing"}},
+        "ListImages",
+    )
+    mock_ecr = MagicMock()
+    mock_ecr.list_images.side_effect = error
+
+    with patch("agent.integrations.aws_ecr_registry.boto3.client", return_value=mock_ecr):
         tags = registry.list_tags("thread-1")
 
     assert tags == []

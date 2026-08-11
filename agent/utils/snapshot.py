@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import os
 from typing import Protocol
-from agent.integrations.localstack_registry import LocalStackRegistry
+
 from agent.integrations.aws_ecr_registry import AwsEcrRegistry
+from agent.integrations.localstack_registry import LocalStackRegistry
 from agent.utils.secrets import SecretsManager
 
 

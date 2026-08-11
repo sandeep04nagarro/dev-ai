@@ -40,16 +40,12 @@ async def test_sync_todos_to_jira_first_time(
                 {"status": "pending", "content": "Task 1"},
                 {"status": "completed", "content": "Task 2"},
             ]
-        }
+        },
     }
     request = MagicMock(spec=ToolCallRequest)
     request.tool_call = tool_call_mock
     request.runtime = MagicMock()
-    request.runtime.config = {
-        "configurable": {
-            "thread_id": "thread-1"
-        }
-    }
+    request.runtime.config = {"configurable": {"thread_id": "thread-1"}}
 
     # Run sync
     await _sync_todos_to_jira(request)
@@ -58,8 +54,7 @@ async def test_sync_todos_to_jira_first_time(
     mock_langgraph_client.assert_called_once()
     mock_client.threads.get.assert_called_once_with("thread-1")
     mock_post_jira_comment.assert_called_once_with(
-        "PROJ-123",
-        "## Agent Implementation Plan\n* [ ] Task 1 (pending)\n* [x] Task 2 (completed)"
+        "PROJ-123", "## Agent Implementation Plan\n* [ ] Task 1 (pending)\n* [x] Task 2 (completed)"
     )
     # Check that metadata was updated with the comment ID
     assert mock_thread["metadata"]["jira_plan_comment_id"] == "comment-999"
@@ -93,16 +88,12 @@ async def test_sync_todos_to_jira_already_posted(
             "todos": [
                 {"status": "pending", "content": "Task 1"},
             ]
-        }
+        },
     }
     request = MagicMock(spec=ToolCallRequest)
     request.tool_call = tool_call_mock
     request.runtime = MagicMock()
-    request.runtime.config = {
-        "configurable": {
-            "thread_id": "thread-1"
-        }
-    }
+    request.runtime.config = {"configurable": {"thread_id": "thread-1"}}
 
     # Run sync
     await _sync_todos_to_jira(request)
@@ -125,26 +116,18 @@ async def test_sync_todos_to_jira_no_issue_key(
     mock_client = MagicMock()
     mock_langgraph_client.return_value = mock_client
 
-    mock_thread = {
-        "metadata": {}
-    }
+    mock_thread = {"metadata": {}}
     mock_client.threads.get = AsyncMock(return_value=mock_thread)
 
     # Construct request
     tool_call_mock = {
         "name": "write_todos",
-        "args": {
-            "todos": [{"status": "pending", "content": "Task 1"}]
-        }
+        "args": {"todos": [{"status": "pending", "content": "Task 1"}]},
     }
     request = MagicMock(spec=ToolCallRequest)
     request.tool_call = tool_call_mock
     request.runtime = MagicMock()
-    request.runtime.config = {
-        "configurable": {
-            "thread_id": "thread-1"
-        }
-    }
+    request.runtime.config = {"configurable": {"thread_id": "thread-1"}}
 
     # Run sync
     await _sync_todos_to_jira(request)
@@ -180,16 +163,12 @@ async def test_middleware_wrap_calls(
             "todos": [
                 {"status": "pending", "content": "Task 1"},
             ]
-        }
+        },
     }
     request = MagicMock(spec=ToolCallRequest)
     request.tool_call = tool_call_mock
     request.runtime = MagicMock()
-    request.runtime.config = {
-        "configurable": {
-            "thread_id": "thread-1"
-        }
-    }
+    request.runtime.config = {"configurable": {"thread_id": "thread-1"}}
 
     middleware = JiraPlanSyncMiddleware()
 

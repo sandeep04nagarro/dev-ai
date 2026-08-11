@@ -65,6 +65,9 @@ def _reaction_payload(content: str = "+1", action: str = "created") -> dict[str,
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(
+    reason="LangSmith feedback integration is commented out in agent/utils/*_feedback.py; re-enable this test with the feature."
+)
 async def test_github_reaction_added_creates_langsmith_feedback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -118,6 +121,9 @@ async def test_github_reaction_added_creates_langsmith_feedback(
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(
+    reason="LangSmith feedback integration is commented out in agent/utils/*_feedback.py; re-enable this test with the feature."
+)
 async def test_github_reaction_removed_deletes_langsmith_feedback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

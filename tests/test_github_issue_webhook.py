@@ -7,6 +7,7 @@ import importlib
 import json
 import logging
 
+import pytest
 from fastapi.testclient import TestClient
 
 from agent import webapp
@@ -69,7 +70,10 @@ def test_generate_thread_id_from_github_issue_is_deterministic() -> None:
     assert len(first) == 36
 
 
-def test_build_github_issue_prompt_includes_issue_context() -> None:
+def test_build_github_issue_prompt_includes_issue_context(monkeypatch) -> None:
+    # The `GH_TOKEN=dummy ` prefix is only emitted for the langsmith sandbox, so
+    # pin the sandbox type instead of depending on ambient config.
+    monkeypatch.setattr(webapp.SandboxConfig, "TYPE", "langsmith")
     prompt = webapp.build_github_issue_prompt(
         {"owner": "langchain-ai", "name": "open-swe"},
         42,
@@ -94,27 +98,22 @@ def test_build_github_issue_followup_prompt_only_includes_comment() -> None:
     assert "## Title" not in prompt
 
 
-def test_reviewer_enablement_uses_dashboard_opt_in(monkeypatch) -> None:
-    seen: dict[str, str] = {}
+def test_reviewer_enablement_uses_dashboard_opt_in(
+    monkeypatch, real_is_repo_enabled_for_review
+) -> None:
+    async def fake_list_enabled_review_repos() -> list[str]:
+        return ["langchain-ai/open-swe-app"]
 
-    async def fake_is_review_repo_enabled(owner: str, name: str) -> bool:
-        seen["owner"] = owner
-        seen["name"] = name
-        return owner == "langchain-ai" and name == "open-swe-app"
-
-    monkeypatch.setattr(webapp, "is_review_repo_enabled", fake_is_review_repo_enabled)
+    monkeypatch.setattr(webapp, "list_enabled_review_repos", fake_list_enabled_review_repos)
 
     assert (
         asyncio.run(
-            webapp._is_repo_enabled_for_review({"owner": "langchain-ai", "name": "open-swe-app"})
+            real_is_repo_enabled_for_review({"owner": "langchain-ai", "name": "open-swe-app"})
         )
         is True
     )
-    assert seen == {"owner": "langchain-ai", "name": "open-swe-app"}
     assert (
-        asyncio.run(
-            webapp._is_repo_enabled_for_review({"owner": "langchain-ai", "name": "open-swe"})
-        )
+        asyncio.run(real_is_repo_enabled_for_review({"owner": "langchain-ai", "name": "open-swe"}))
         is False
     )
 
@@ -212,6 +211,9 @@ def test_github_webhook_accepts_issue_comment_events(monkeypatch) -> None:
     assert called["event_type"] == "issue_comment"
 
 
+@pytest.mark.skip(
+    reason="GitHub PR-comment dispatch is intentionally disabled: the `is_pull_request_comment` branch in agent/webapp.py has been commented out since 88b7861d, so comments on pull requests are no longer routed. Re-enable this test if PR-comment routing is restored."
+)
 def test_github_webhook_ignores_unmentioned_comment_without_info_log(monkeypatch, caplog) -> None:
     async def fake_process_github_pr_comment(payload: dict[str, object], event_type: str) -> None:
         raise AssertionError("process_github_pr_comment should not be called")
@@ -246,6 +248,9 @@ def test_github_webhook_ignores_unmentioned_comment_without_info_log(monkeypatch
     assert "does not mention @dev-agent" not in caplog.text
 
 
+@pytest.mark.skip(
+    reason="GitHub PR-comment dispatch is intentionally disabled: the `is_pull_request_comment` branch in agent/webapp.py has been commented out since 88b7861d, so comments on pull requests are no longer routed. Re-enable this test if PR-comment routing is restored."
+)
 def test_github_webhook_routes_review_comment_reply_without_tag(monkeypatch) -> None:
     called: dict[str, object] = {}
 
@@ -493,6 +498,9 @@ def test_github_webhook_ignores_unsupported_comment_action(monkeypatch) -> None:
     }
 
 
+@pytest.mark.skip(
+    reason="GitHub PR-comment dispatch is intentionally disabled: the `is_pull_request_comment` branch in agent/webapp.py has been commented out since 88b7861d, so comments on pull requests are no longer routed. Re-enable this test if PR-comment routing is restored."
+)
 def test_github_webhook_blocks_reviewer_repo_not_enabled_in_dashboard(monkeypatch) -> None:
     called = False
 
@@ -505,10 +513,10 @@ def test_github_webhook_blocks_reviewer_repo_not_enabled_in_dashboard(monkeypatc
     )
     monkeypatch.setattr(webapp, "GITHUB_WEBHOOK_SECRET", _TEST_WEBHOOK_SECRET)
 
-    async def fake_is_review_repo_enabled(_owner: str, _name: str) -> bool:
+    async def fake_repo_enabled(_repo_config: dict) -> bool:
         return False
 
-    monkeypatch.setattr(webapp, "is_review_repo_enabled", fake_is_review_repo_enabled)
+    monkeypatch.setattr(webapp, "_is_repo_enabled_for_review", fake_repo_enabled)
 
     client = TestClient(webapp.app)
     response = _post_github_webhook(
@@ -533,6 +541,9 @@ def test_github_webhook_blocks_reviewer_repo_not_enabled_in_dashboard(monkeypatc
     assert called is False
 
 
+@pytest.mark.skip(
+    reason="GitHub PR-comment dispatch is intentionally disabled: the `is_pull_request_comment` branch in agent/webapp.py has been commented out since 88b7861d, so comments on pull requests are no longer routed. Re-enable this test if PR-comment routing is restored."
+)
 def test_github_webhook_accepts_open_swe_review_requested(monkeypatch) -> None:
     called: dict[str, object] = {}
 
@@ -808,7 +819,7 @@ def test_slack_webhook_threaded_followup_uses_parent_thread_ts(monkeypatch) -> N
     assert event_data["event_ts"] == "1700000000.000200"
 
 
-def test_process_slack_pr_review_request_posts_trace_reply(monkeypatch) -> None:
+def test_process_slack_pr_review_request_routes_to_reviewer(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     async def fake_trigger_pr_review_from_ref(
@@ -826,19 +837,11 @@ def test_process_slack_pr_review_request_posts_trace_reply(monkeypatch) -> None:
         captured["slack_thread_ts"] = slack_thread_ts
         return {"success": True, "thread_id": "reviewer-thread-id", "pr_url": pr_ref.url}
 
-    async def fake_post_slack_trace_reply(channel_id: str, thread_ts: str, thread_id: str) -> None:
-        captured["trace_reply"] = {
-            "channel_id": channel_id,
-            "thread_ts": thread_ts,
-            "thread_id": thread_id,
-        }
-
     async def fake_set_slack_assistant_status(channel_id: str, thread_ts: str) -> bool:
         captured.setdefault("status_calls", []).append((channel_id, thread_ts))
         return True
 
     monkeypatch.setattr(webapp, "trigger_pr_review_from_ref", fake_trigger_pr_review_from_ref)
-    monkeypatch.setattr(webapp, "post_slack_trace_reply", fake_post_slack_trace_reply)
     monkeypatch.setattr(webapp, "set_slack_assistant_status", fake_set_slack_assistant_status)
 
     asyncio.run(
@@ -857,11 +860,6 @@ def test_process_slack_pr_review_request_posts_trace_reply(monkeypatch) -> None:
     assert captured["source"] == "slack"
     assert captured["slack_channel_id"] == "C123"
     assert captured["slack_thread_ts"] == "1700000000.000100"
-    assert captured["trace_reply"] == {
-        "channel_id": "C123",
-        "thread_ts": "1700000000.000100",
-        "thread_id": "reviewer-thread-id",
-    }
     assert captured["status_calls"] == [
         ("C123", "1700000000.000100"),
         ("C123", "1700000000.000100"),
@@ -1071,10 +1069,10 @@ def test_trigger_pr_review_from_ref_respects_dashboard_opt_in(monkeypatch) -> No
         webapp, "get_github_app_installation_token", fake_get_github_app_installation_token
     )
 
-    async def fake_is_review_repo_enabled(_owner: str, _name: str) -> bool:
+    async def fake_repo_enabled(_repo_config: dict) -> bool:
         return False
 
-    monkeypatch.setattr(webapp, "is_review_repo_enabled", fake_is_review_repo_enabled)
+    monkeypatch.setattr(webapp, "_is_repo_enabled_for_review", fake_repo_enabled)
 
     result = asyncio.run(
         webapp.trigger_pr_review_from_ref(
@@ -1408,6 +1406,9 @@ def test_parse_github_review_command_does_not_swallow_trailing_text() -> None:
     )
 
 
+@pytest.mark.skip(
+    reason="GitHub PR-comment dispatch is intentionally disabled: the `is_pull_request_comment` branch in agent/webapp.py has been commented out since 88b7861d, so comments on pull requests are no longer routed. Re-enable this test if PR-comment routing is restored."
+)
 def test_github_webhook_routes_pr_comment_review_to_agent(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
@@ -1447,6 +1448,9 @@ def test_github_webhook_routes_pr_comment_review_to_agent(monkeypatch) -> None:
     assert captured["event_type"] == "issue_comment"
 
 
+@pytest.mark.skip(
+    reason="GitHub PR-comment dispatch is intentionally disabled: the `is_pull_request_comment` branch in agent/webapp.py has been commented out since 88b7861d, so comments on pull requests are no longer routed. Re-enable this test if PR-comment routing is restored."
+)
 def test_github_webhook_routes_pr_review_request_comment_to_agent(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
