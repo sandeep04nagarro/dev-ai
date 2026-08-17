@@ -50,6 +50,7 @@ from .dashboard.agent_overrides import (
 from .dashboard.enabled_repos import is_review_repo_enabled, list_enabled_review_repos  # noqa: F401
 from .dashboard.profiles import get_profile
 from .dashboard.team_settings import get_team_settings
+from .langfuse_proxy import router as langfuse_proxy_router
 from .reviewer_findings import (
     REVIEWER_THREAD_KIND,
     Finding,
@@ -180,8 +181,6 @@ if DASHBOARD_ALLOWED_ORIGINS:
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )
-
-from .langfuse_proxy import router as langfuse_proxy_router
 
 app.include_router(dashboard_router)
 app.include_router(langfuse_proxy_router)

@@ -1,7 +1,9 @@
 import json
 import logging
+import re
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 import httpx
 from fastapi import APIRouter, Request, Response
 
@@ -12,10 +14,9 @@ LANGFUSE_BACKEND_URL = "http://localhost:3000"
 S3_ENDPOINT = "http://localhost:9090"
 S3_BUCKET = "langfuse"
 
-import re
-
 ISO_DATE_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$")
 CH_DATE_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$")
+
 
 def format_and_check_date(obj: Any):
     if isinstance(obj, str):
@@ -26,7 +27,8 @@ def format_and_check_date(obj: Any):
             return True, iso
     return False, obj
 
-def parse_ch_datetime(value: Any) -> Optional[datetime]:
+
+def parse_ch_datetime(value: Any) -> datetime | None:
     if not isinstance(value, str) or not value:
         return None
     normalized = value.replace("T", " ").rstrip("Z")
@@ -60,7 +62,7 @@ def reduce_usage_or_cost_details(details: Any):
     return input_val, output_val, total_val
 
 
-def add_observation_derived_fields(obs: Dict[str, Any]) -> Dict[str, Any]:
+def add_observation_derived_fields(obs: dict[str, Any]) -> dict[str, Any]:
     """Injects the computed fields (usage/cost aggregates, latency, timeToFirstToken)
     that Langfuse's ClickHouse->domain converter derives at read time rather than
     storing as raw columns. Mutates and returns obs (still snake_case)."""
@@ -88,8 +90,8 @@ def add_observation_derived_fields(obs: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def build_agent_graph_data(
-    observations: List[Dict[str, Any]], min_start: Optional[datetime], max_start: Optional[datetime]
-) -> List[Dict[str, Any]]:
+    observations: list[dict[str, Any]], min_start: datetime | None, max_start: datetime | None
+) -> list[dict[str, Any]]:
     """Mirrors traces.getAgentGraphData (web/src/server/api/routers/traces.ts:610-679)
     and getAgentGraphData (packages/shared/src/server/repositories/traces.ts:1487-1523).
     Node/step come from the langgraph_node/langgraph_step metadata keys, which the
@@ -114,27 +116,31 @@ def build_agent_graph_data(
         obs_type = o.get("type")
 
         if node is not None and step is not None:
-            result.append({
-                "id": o.get("id"),
-                "node": node,
-                "step": step,
-                "parentObservationId": o.get("parent_observation_id"),
-                "name": o.get("name"),
-                "startTime": o.get("start_time"),
-                "endTime": o.get("end_time"),
-                "observationType": obs_type,
-            })
+            result.append(
+                {
+                    "id": o.get("id"),
+                    "node": node,
+                    "step": step,
+                    "parentObservationId": o.get("parent_observation_id"),
+                    "name": o.get("name"),
+                    "startTime": o.get("start_time"),
+                    "endTime": o.get("end_time"),
+                    "observationType": obs_type,
+                }
+            )
         elif obs_type != "EVENT":
-            result.append({
-                "id": o.get("id"),
-                "node": o.get("name"),
-                "step": 0,
-                "parentObservationId": o.get("parent_observation_id"),
-                "name": o.get("name"),
-                "startTime": o.get("start_time"),
-                "endTime": o.get("end_time"),
-                "observationType": obs_type,
-            })
+            result.append(
+                {
+                    "id": o.get("id"),
+                    "node": o.get("name"),
+                    "step": 0,
+                    "parentObservationId": o.get("parent_observation_id"),
+                    "name": o.get("name"),
+                    "startTime": o.get("start_time"),
+                    "endTime": o.get("end_time"),
+                    "observationType": obs_type,
+                }
+            )
     return result
 
 
@@ -145,15 +151,21 @@ def build_agent_graph_data(
 # frontend calls e.g. `cost.toNumber()` directly, so these must be tagged or
 # the table cell throws on a plain number.
 METRICS_BIGINT_FIELDS = {
-    "promptTokens", "completionTokens", "totalTokens", "observationCount",
-    "errorCount", "warningCount", "defaultCount", "debugCount",
+    "promptTokens",
+    "completionTokens",
+    "totalTokens",
+    "observationCount",
+    "errorCount",
+    "warningCount",
+    "defaultCount",
+    "debugCount",
 }
 METRICS_DECIMAL_FIELDS = {"calculatedTotalCost", "calculatedInputCost", "calculatedOutputCost"}
 
 
-def sum_numeric_maps(maps: List[Any]) -> Dict[str, float]:
+def sum_numeric_maps(maps: list[Any]) -> dict[str, float]:
     """Mirrors ClickHouse's sumMap(): key-wise sum across a list of maps."""
-    total: Dict[str, float] = {}
+    total: dict[str, float] = {}
     for m in maps:
         if not isinstance(m, dict):
             continue
@@ -166,7 +178,9 @@ def sum_numeric_maps(maps: List[Any]) -> Dict[str, float]:
     return total
 
 
-def build_trace_metrics_row(trace: Dict[str, Any], observations: List[Dict[str, Any]]) -> Dict[str, Any]:
+def build_trace_metrics_row(
+    trace: dict[str, Any], observations: list[dict[str, Any]]
+) -> dict[str, Any]:
     """Mirrors the traces.metrics SQL + convertToUITableMetrics
     (packages/shared/src/server/services/traces-ui-table-service.ts:280-377, 105-145)."""
     level_counts = {"ERROR": 0, "WARNING": 0, "DEFAULT": 0, "DEBUG": 0}
@@ -210,15 +224,13 @@ def build_trace_metrics_row(trace: Dict[str, Any], observations: List[Dict[str, 
     }
 
 
-def compute_trace_latency(observations: List[Dict[str, Any]]) -> Optional[float]:
+def compute_trace_latency(observations: list[dict[str, Any]]) -> float | None:
     """Mirrors the latency computation in traces.byIdWithObservationsAndScores
     (web/src/server/api/routers/traces.ts)."""
     start_times = sorted(
         t for t in (parse_ch_datetime(o.get("start_time")) for o in observations) if t
     )
-    end_times = sorted(
-        t for t in (parse_ch_datetime(o.get("end_time")) for o in observations) if t
-    )
+    end_times = sorted(t for t in (parse_ch_datetime(o.get("end_time")) for o in observations) if t)
     if not start_times:
         return None
     if end_times:
@@ -229,8 +241,9 @@ def compute_trace_latency(observations: List[Dict[str, Any]]) -> Optional[float]
 
 
 def to_camel_case(snake_str):
-    components = snake_str.split('_')
-    return components[0] + ''.join(x.title() for x in components[1:])
+    components = snake_str.split("_")
+    return components[0] + "".join(x.title() for x in components[1:])
+
 
 def convert_keys_to_camel(obj):
     if isinstance(obj, list):
@@ -239,12 +252,20 @@ def convert_keys_to_camel(obj):
         new_obj = {}
         for k, v in obj.items():
             new_key = to_camel_case(k)
-            
+
             if k in (
-                "metadata", "tags", "input", "output", 
-                "model_parameters", "usage_details", "provided_usage_details", 
-                "cost_details", "provided_cost_details", "tool_definitions", 
-                "tool_calls", "tool_call_names"
+                "metadata",
+                "tags",
+                "input",
+                "output",
+                "model_parameters",
+                "usage_details",
+                "provided_usage_details",
+                "cost_details",
+                "provided_cost_details",
+                "tool_definitions",
+                "tool_calls",
+                "tool_call_names",
             ):
                 new_obj[new_key] = v
             elif new_key == "isDeleted" and isinstance(v, int):
@@ -254,21 +275,27 @@ def convert_keys_to_camel(obj):
         return new_obj
     return obj
 
-def build_superjson(data: Any) -> Dict[str, Any]:
+
+def build_superjson(data: Any) -> dict[str, Any]:
     meta_values = {}
     dummy = {"root": data}
-    
+
     queue = [(data, [], dummy, "root")]
-    
+
     # Known date fields in Langfuse TRPC schema
     date_fields = {
-        "timestamp", "createdAt", "updatedAt", "eventTs",
-        "startTime", "endTime", "completionStartTime"
+        "timestamp",
+        "createdAt",
+        "updatedAt",
+        "eventTs",
+        "startTime",
+        "endTime",
+        "completionStartTime",
     }
-    
+
     while queue:
         obj, path, parent, key = queue.pop()
-        
+
         if isinstance(obj, dict):
             for k, v in obj.items():
                 queue.append((v, path + [k], obj, k))
@@ -282,11 +309,12 @@ def build_superjson(data: Any) -> Dict[str, Any]:
                 if is_date:
                     parent[key] = new_val
                     meta_values[".".join(path)] = ["Date"]
-                
+
     res = {"json": dummy["root"]}
     if meta_values:
         res["meta"] = {"values": meta_values}
     return res
+
 
 @router.api_route("/api/trpc/{operations}", methods=["GET", "POST"])
 async def proxy_trpc(operations: str, request: Request):
@@ -296,7 +324,7 @@ async def proxy_trpc(operations: str, request: Request):
         headers = dict(request.headers)
         headers.pop("host", None)
         headers.pop("content-length", None)
-        
+
         try:
             if request.method == "POST":
                 body = await request.body()
@@ -306,7 +334,7 @@ async def proxy_trpc(operations: str, request: Request):
         except Exception as e:
             logger.error(f"Failed to proxy to Langfuse: {e}")
             return Response(status_code=502, content="Bad Gateway")
-            
+
     # 2. Check if we need to augment the response with S3 data
     intercept_ops = [
         "traces.byId",
@@ -316,7 +344,7 @@ async def proxy_trpc(operations: str, request: Request):
         "traces.metrics",
     ]
     op_list = operations.split(",")
-    
+
     # Note: no status-code gate here. A pruned observation makes the real backend
     # throw NOT_FOUND (non-2xx) for observations.byId, and we still need to try
     # serving it from the S3 archive in that case, not just on 200/207.
@@ -324,7 +352,7 @@ async def proxy_trpc(operations: str, request: Request):
         try:
             res_json = resp.json()
             input_str = request.query_params.get("input")
-            
+
             if input_str:
                 inputs = json.loads(input_str)
                 is_batch = isinstance(res_json, list)
@@ -334,7 +362,7 @@ async def proxy_trpc(operations: str, request: Request):
                     op = op_list[i]
                     if op not in intercept_ops:
                         continue
-                        
+
                     # Extract the input payload for this operation
                     if is_batch:
                         idx = str(i)
@@ -356,7 +384,9 @@ async def proxy_trpc(operations: str, request: Request):
                             current_item = res_json[i] if is_batch else res_json
                             data_container = current_item["result"]["data"]
                             rows = data_container.get("json") or []
-                            meta_values = dict(data_container.get("meta", {}).get("values", {}) or {})
+                            meta_values = dict(
+                                data_container.get("meta", {}).get("values", {}) or {}
+                            )
                         except (KeyError, TypeError):
                             continue
 
@@ -400,7 +430,9 @@ async def proxy_trpc(operations: str, request: Request):
                             elif "meta" in data_container:
                                 del data_container["meta"]
                             augmented_any = True
-                            logger.info(f"Patched traces.metrics rows for archived traces among {trace_ids}")
+                            logger.info(
+                                f"Patched traces.metrics rows for archived traces among {trace_ids}"
+                            )
                         continue
 
                     trace_id = trpc_json.get("traceId")
@@ -492,18 +524,14 @@ async def proxy_trpc(operations: str, request: Request):
                         content=json.dumps(res_json),
                         status_code=200,
                         media_type="application/json",
-                        headers=headers_out
+                        headers=headers_out,
                     )
-        except Exception as e:
+        except Exception:
             logger.exception("Error augmenting tRPC response")
-            
+
     # Return original response
     headers_out = dict(resp.headers)
     headers_out.pop("content-length", None)
     headers_out.pop("content-encoding", None)
     headers_out.pop("transfer-encoding", None)
-    return Response(
-        content=resp.content,
-        status_code=resp.status_code,
-        headers=headers_out
-    )
+    return Response(content=resp.content, status_code=resp.status_code, headers=headers_out)
