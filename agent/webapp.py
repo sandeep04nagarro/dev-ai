@@ -181,8 +181,10 @@ if DASHBOARD_ALLOWED_ORIGINS:
         allow_headers=["*"],
     )
 
-app.include_router(dashboard_router)
+from .langfuse_proxy import router as langfuse_proxy_router
 
+app.include_router(dashboard_router)
+app.include_router(langfuse_proxy_router)
 # LINEAR_WEBHOOK_SECRET = os.environ.get("LINEAR_WEBHOOK_SECRET", "")
 # JIRA_WEBHOOK_SECRET = os.environ.get("JIRA_WEBHOOK_SECRET", "")
 JIRA_WEBHOOK_SECRET = SecretsManager.get("JIRA_WEBHOOK_SECRET", "")
