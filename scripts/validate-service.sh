@@ -3,7 +3,7 @@ set -e
 
 echo "Validating DevAI agent service..."
 for i in {1..12}; do
-  if curl -s http://localhost:2024/health > /dev/null; then
+  if curl -s http://localhost:8081/health > /dev/null; then
     echo "Service is up and healthy!"
     exit 0
   fi
