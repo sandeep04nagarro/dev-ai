@@ -15,7 +15,7 @@ fi
 docker run -d \
   --name devai-agent \
   --restart unless-stopped \
-  -p 2024:2024 \
+  -p 8081:2024 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   $ENV_ARGS \
   $IMAGE_URI
