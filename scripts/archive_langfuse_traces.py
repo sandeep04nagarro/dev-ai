@@ -4,9 +4,10 @@ import logging
 from datetime import UTC, datetime
 
 import httpx
+from botocore.exceptions import ClientError
 
 import agent.bootstrap  # noqa: F401  — loads .env before any SecretsManager/os.environ read below
-from agent.utils.s3_client import S3_BUCKET, get_s3_client
+from agent.utils.s3_client import S3_BUCKET, S3_ENDPOINT, get_s3_client
 from agent.utils.secrets import SecretsManager
 
 logging.basicConfig(level=logging.INFO)
@@ -76,9 +77,27 @@ def parse_json_fields(obj):
 def ensure_bucket(s3):
     try:
         s3.head_bucket(Bucket=S3_BUCKET)
-    except Exception:
+        return
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "")
+
+    if S3_ENDPOINT:
+        # Local/dev against MinIO - fine to auto-create.
         logger.info(f"Creating bucket {S3_BUCKET}")
         s3.create_bucket(Bucket=S3_BUCKET)
+        return
+
+    # Real AWS S3: don't try to auto-create in production - HeadBucket returns
+    # an opaque 403 for both "doesn't exist" and "exists but no permission",
+    # and create_bucket would also need a region-specific LocationConstraint
+    # outside us-east-1. Surface the real problem instead of masking it
+    # behind a confusing CreateBucket error.
+    raise RuntimeError(
+        f"Cannot access S3 bucket {S3_BUCKET!r} (HeadBucket failed with error code "
+        f"{error_code!r}). Check the bucket exists and the IAM role has s3:ListBucket "
+        f"on arn:aws:s3:::{S3_BUCKET} plus s3:GetObject/s3:PutObject on "
+        f"arn:aws:s3:::{S3_BUCKET}/*."
+    )
 
 
 async def fetch_unarchived_traces(limit: int, order_by: str | None = None) -> list[dict]:
