@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import re
@@ -5,17 +6,40 @@ from datetime import datetime
 from typing import Any
 
 import httpx
+from botocore.exceptions import ClientError
 from fastapi import APIRouter, Request, Response
+
+from agent.utils.s3_client import S3_BUCKET, get_s3_client
+from agent.utils.secrets import SecretsManager
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-LANGFUSE_BACKEND_URL = "http://localhost:3000"
-S3_ENDPOINT = "http://localhost:9090"
-S3_BUCKET = "langfuse"
+LANGFUSE_BACKEND_URL = SecretsManager.get("LANGFUSE_BACKEND_URL", "http://localhost:3000")
 
 ISO_DATE_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$")
 CH_DATE_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$")
+
+
+class TraceNotArchived(Exception):
+    """Raised when the requested trace/observation isn't in the S3 archive."""
+
+
+def _get_archived_object_sync(s3_key: str) -> dict:
+    try:
+        obj = get_s3_client().get_object(Bucket=S3_BUCKET, Key=s3_key)
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") in ("NoSuchKey", "404"):
+            raise TraceNotArchived(s3_key) from e
+        raise
+    return json.loads(obj["Body"].read())
+
+
+async def fetch_archived_payload(s3_key: str) -> dict:
+    """Fetches an archived trace's JSON payload from S3 using the process's
+    IAM role (or explicit MinIO keys locally) - never a public/unauthenticated
+    URL. Raises TraceNotArchived if s3_key doesn't exist."""
+    return await asyncio.to_thread(_get_archived_object_sync, s3_key)
 
 
 def format_and_check_date(obj: Any):
@@ -397,12 +421,8 @@ async def proxy_trpc(operations: str, request: Request):
                                 continue
                             s3_key = f"archived-traces/{metrics_project_id}/{row_trace_id}.json"
                             try:
-                                url = f"{S3_ENDPOINT}/{S3_BUCKET}/{s3_key}"
-                                async with httpx.AsyncClient() as dl_client:
-                                    s3_resp = await dl_client.get(url)
-                                    s3_resp.raise_for_status()
-                                    archived_payload = s3_resp.json()
-                            except httpx.HTTPError:
+                                archived_payload = await fetch_archived_payload(s3_key)
+                            except TraceNotArchived:
                                 continue  # not archived - leave this row as the real backend returned it
 
                             metrics_row = build_trace_metrics_row(
@@ -442,12 +462,7 @@ async def proxy_trpc(operations: str, request: Request):
                     if trace_id and project_id:
                         s3_key = f"archived-traces/{project_id}/{trace_id}.json"
                         try:
-                            # Fetch directly via HTTP since bucket is public
-                            url = f"{S3_ENDPOINT}/{S3_BUCKET}/{s3_key}"
-                            async with httpx.AsyncClient() as dl_client:
-                                s3_resp = await dl_client.get(url)
-                                s3_resp.raise_for_status()
-                                payload = s3_resp.json()
+                            payload = await fetch_archived_payload(s3_key)
 
                             if op == "traces.getAgentGraphData":
                                 # AgentGraphDataSchema wants plain strings for
@@ -495,7 +510,7 @@ async def proxy_trpc(operations: str, request: Request):
                                         None,
                                     )
                                     if match is None:
-                                        raise httpx.HTTPError("Observation not found in archive")
+                                        raise TraceNotArchived(observation_id)
                                     data = add_observation_derived_fields(dict(match))
                                     data["internal_model"] = data.get("internal_model_id")
 
@@ -510,7 +525,7 @@ async def proxy_trpc(operations: str, request: Request):
                             augmented_any = True
 
                             logger.info(f"Intercepted and fetched {op} for {trace_id} from S3")
-                        except httpx.HTTPError:
+                        except TraceNotArchived:
                             # Not in S3 (or observation not in the archive) - leave
                             # Langfuse's original response/error for this op untouched.
                             pass
