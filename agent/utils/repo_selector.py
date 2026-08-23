@@ -14,9 +14,15 @@ from agent.utils.token_profiler import record_repo_selection_tokens
 
 logger = logging.getLogger(__name__)
 
+
+def _env_flag_enabled(value: str | None) -> bool:
+    """Parse a "true"/"false"-style env string into a bool (non-empty strings are not truthy)."""
+    return (value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 MULTI_REPO_SELECTOR_MODEL_ID = SecretsManager.get("MULTI_REPO_SELECTOR_MODEL_ID")
 MULTI_REPO_SELECTOR_FALLBACK = SecretsManager.get("MULTI_REPO_SELECTOR_FALLBACK")
-MULTI_REPO_SELECTOR_ENABLED = SecretsManager.get("MULTI_REPO_SELECTOR_ENABLED")
+MULTI_REPO_SELECTOR_ENABLED = _env_flag_enabled(SecretsManager.get("MULTI_REPO_SELECTOR_ENABLED"))
 
 REPO_SELECTION_SYSTEM_PROMPT = """You are a repository selection assistant. Given a Jira ticket and available repositories,
 determine which repositories are needed to complete this task.
