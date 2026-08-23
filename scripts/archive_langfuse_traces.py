@@ -87,16 +87,18 @@ def ensure_bucket(s3):
         s3.create_bucket(Bucket=S3_BUCKET)
         return
 
-    # Real AWS S3: don't try to auto-create in production - HeadBucket returns
-    # an opaque 403 for both "doesn't exist" and "exists but no permission",
-    # and create_bucket would also need a region-specific LocationConstraint
-    # outside us-east-1. Surface the real problem instead of masking it
-    # behind a confusing CreateBucket error.
-    raise RuntimeError(
-        f"Cannot access S3 bucket {S3_BUCKET!r} (HeadBucket failed with error code "
-        f"{error_code!r}). Check the bucket exists and the IAM role has s3:ListBucket "
-        f"on arn:aws:s3:::{S3_BUCKET} plus s3:GetObject/s3:PutObject on "
-        f"arn:aws:s3:::{S3_BUCKET}/*."
+    # Real AWS S3: HeadBucket is gated by s3:ListBucket, a *bucket-level*
+    # permission distinct from the s3:GetObject/s3:PutObject *object-level*
+    # ones an IAM policy can grant scoped to just this app's prefix without
+    # ListBucket. So a 403 here doesn't necessarily mean archiving will fail -
+    # skip the check and let the real put_object/get_object calls succeed or
+    # fail on their own, rather than hard-blocking on a permission that isn't
+    # actually required for the archive/read round trip to work.
+    logger.warning(
+        "HeadBucket check failed (%s) - continuing anyway. This only needs "
+        "s3:ListBucket, not s3:GetObject/s3:PutObject, so it can 403 even when "
+        "the actual archive read/write below will succeed.",
+        error_code,
     )
 
 
