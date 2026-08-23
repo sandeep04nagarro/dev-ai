@@ -15,7 +15,13 @@ from agent.utils.secrets import SecretsManager
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-LANGFUSE_BASE_URL = SecretsManager.get("LANGFUSE_BASE_URL", "http://localhost:3000")
+# Deliberately NOT the same as LANGFUSE_BASE_URL (agent/utils/tracing.py) - that
+# one is the *public* URL the SDK uses to send trace events, e.g. the
+# internet-facing domain behind nginx. This one is a server-to-server hop that
+# must reach the langfuse-web container directly (its internal Docker network
+# address/port), never the public domain - nginx routes all /api/trpc/* here,
+# so pointing this at the public URL creates a self-referencing loop.
+LANGFUSE_BACKEND_URL = SecretsManager.get("LANGFUSE_BACKEND_URL", "http://localhost:3000")
 
 ISO_DATE_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$")
 CH_DATE_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$")
@@ -344,7 +350,7 @@ def build_superjson(data: Any) -> dict[str, Any]:
 async def proxy_trpc(operations: str, request: Request):
     # 1. Forward request to real Langfuse backend FIRST
     async with httpx.AsyncClient() as client:
-        target_url = f"{LANGFUSE_BASE_URL}/api/trpc/{operations}?{request.url.query}"
+        target_url = f"{LANGFUSE_BACKEND_URL}/api/trpc/{operations}?{request.url.query}"
         headers = dict(request.headers)
         headers.pop("host", None)
         headers.pop("content-length", None)
