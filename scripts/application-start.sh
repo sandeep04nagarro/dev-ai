@@ -15,6 +15,7 @@ fi
 docker run -d \
   --name devai-agent \
   --restart unless-stopped \
+  --network langfuse_default \
   -p 8081:2024 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   $ENV_ARGS \
