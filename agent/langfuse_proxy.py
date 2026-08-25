@@ -35,7 +35,16 @@ def _get_archived_object_sync(s3_key: str) -> dict:
     try:
         obj = get_s3_client().get_object(Bucket=S3_BUCKET, Key=s3_key)
     except ClientError as e:
-        if e.response.get("Error", {}).get("Code") in ("NoSuchKey", "404"):
+        # Without s3:ListBucket, S3 can't tell the caller "doesn't exist" from
+        # "no permission" - it returns 403 AccessDenied for a missing key
+        # instead of 404/NoSuchKey, specifically so an unauthorized caller
+        # can't distinguish the two. Every un-archived trace we probe hits
+        # this path, so treating AccessDenied as anything other than "not
+        # archived" here means one live trace mixed into a batch (e.g.
+        # traces.metrics checking several rows) throws an unhandled error
+        # that discards augmentation results for the other, actually-archived
+        # rows in the same request.
+        if e.response.get("Error", {}).get("Code") in ("NoSuchKey", "404", "AccessDenied"):
             raise TraceNotArchived(s3_key) from e
         raise
     return json.loads(obj["Body"].read())
