@@ -85,7 +85,6 @@ from .utils.github_comments import (
     fetch_pr_comments_since_last_tag,
     format_github_comment_body_for_prompt,
     get_thread_id_from_branch,
-    parse_github_review_command,
     react_to_github_comment,
     sanitize_github_comment_body,
     verify_github_signature,
@@ -155,8 +154,13 @@ app.include_router(dashboard_router)
 # LINEAR_WEBHOOK_SECRET = os.environ.get("LINEAR_WEBHOOK_SECRET", "")
 JIRA_WEBHOOK_SECRET = os.environ.get("JIRA_WEBHOOK_SECRET", "")
 JIRA_BOT_NAME = JiraConfig.BOT_NAME
-GITHUB_WEBHOOK_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "")
-SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET", "")
+# Mention string this worker responds to. In a multi-container deployment each
+# container is given a distinct WORKER_TAG (e.g. @cn) by the routing service.
+WORKER_TAG = os.environ.get("WORKER_TAG", "@dev-agent").lower()
+# GITHUB_WEBHOOK_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "")
+GITHUB_WEBHOOK_SECRET = SecretsManager.get("GITHUB_WEBHOOK_SECRET", "")
+# SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET", "")
+SLACK_SIGNING_SECRET = SecretsManager.get("SLACK_SIGNING_SECRET", "")
 SLACK_BOT_USER_ID = SlackConfig.BOT_USER_ID
 SLACK_BOT_USERNAME = SlackConfig.BOT_USERNAME
 DEFAULT_REPO_OWNER = RepoConfig.DEFAULT_OWNER
@@ -1390,9 +1394,9 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
                         text_parts.append(inner.get("text", ""))
             comment_body = " ".join(text_parts)
 
-        if "@dev-agent" not in comment_body.lower():
-            logger.debug("Ignoring Jira webhook: comment doesn't mention @dev-agent")
-            return {"status": "ignored", "reason": "Comment doesn't mention @dev-agent"}
+        if WORKER_TAG not in comment_body.lower():
+            logger.debug("Ignoring Jira webhook: comment doesn't mention %s", WORKER_TAG)
+            return {"status": "ignored", "reason": f"Comment doesn't mention {WORKER_TAG}"}
 
         author_name = author.get("displayName", "User")
         author_email = author.get("emailAddress", "")
