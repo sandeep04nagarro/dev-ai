@@ -4,7 +4,6 @@
 # Suppress deprecation warnings from langchain_core (e.g., Pydantic V1 on Python 3.14+)
 # ruff: noqa: E402
 import logging
-import os
 import warnings
 from typing import Any
 
@@ -13,6 +12,8 @@ logger = logging.getLogger(__name__)
 from langgraph.graph.state import RunnableConfig
 from langgraph.pregel import Pregel
 from langgraph_sdk import get_client
+
+from agent.utils.secrets import SecretsManager
 
 warnings.filterwarnings("ignore", module="langchain_core._api.deprecation")
 
@@ -87,8 +88,14 @@ SANDBOX_CREATING = "__creating__"
 SANDBOX_CREATION_TIMEOUT = 180
 SANDBOX_POLL_INTERVAL = 1.0
 
-SNAPSHOT_ENABLED = os.environ.get("SANDBOX_SNAPSHOT_ENABLED", "").lower() in (
-    "1", "true", "on", "yes",
+# SNAPSHOT_ENABLED = os.environ.get("SANDBOX_SNAPSHOT_ENABLED", "").lower() in (
+#     "1", "true", "on", "yes",
+# )
+SNAPSHOT_ENABLED = (SecretsManager.get("SANDBOX_SNAPSHOT_ENABLED") or "").lower() in (
+    "1",
+    "true",
+    "on",
+    "yes",
 )
 
 from agent.utils.sandbox_state import (
@@ -183,10 +190,10 @@ async def _configure_git_identity(sandbox_backend: SandboxBackendProtocol) -> No
     await asyncio.to_thread(
         sandbox_backend.execute,
         "git config --global user.name 'dev-agent[bot]' && "
-        "git config --global user.email 'open-swe@users.noreply.github.com'"
+        "git config --global user.email 'open-swe@users.noreply.github.com'",
         # && "
-    #     "git config --global credential.helper "
-    #     "'!f() { echo \"username=x-access-token\"; echo \"password=$GH_TOKEN\"; }; f'",
+        #     "git config --global credential.helper "
+        #     "'!f() { echo \"username=x-access-token\"; echo \"password=$GH_TOKEN\"; }; f'",
     )
 
 
@@ -228,7 +235,9 @@ async def _recreate_sandbox(thread_id: str) -> SandboxBackendProtocol:
 
 
 async def check_or_recreate_sandbox(
-    sandbox_backend: SandboxBackendProtocol, thread_id: str, sandbox_id: str |None = None,
+    sandbox_backend: SandboxBackendProtocol,
+    thread_id: str,
+    sandbox_id: str | None = None,
 ) -> SandboxBackendProtocol:
     """Check if a cached sandbox is reachable; recreate it if not.
 
@@ -305,7 +314,9 @@ async def _ensure_sandbox_snapshot(thread_id: str) -> SandboxBackendProtocol:
         logger.info("Snapshot image exists for thread %s, pulling from registry", thread_id)
         sandbox_backend = await create_sandbox(thread_id)
     elif isinstance(snapshot_status, str):
-        logger.info("Reconnecting to stopped container %s for thread %s", snapshot_status, thread_id)
+        logger.info(
+            "Reconnecting to stopped container %s for thread %s", snapshot_status, thread_id
+        )
         sandbox_backend = await create_sandbox(snapshot_status)
     else:
         logger.info("Creating fresh sandbox for thread %s (no snapshot state)", thread_id)
@@ -328,7 +339,9 @@ async def _ensure_sandbox_legacy(thread_id: str) -> SandboxBackendProtocol:
 
     if sandbox_backend:
         logger.info("Using cached sandbox backend for thread %s", thread_id)
-        sandbox_backend = await check_or_recreate_sandbox(sandbox_backend, thread_id, sandbox_id=sandbox_id)
+        sandbox_backend = await check_or_recreate_sandbox(
+            sandbox_backend, thread_id, sandbox_id=sandbox_id
+        )
     elif sandbox_id is None:
         logger.info("Creating new sandbox for thread %s", thread_id)
         await client.threads.update(thread_id=thread_id, metadata={"sandbox_id": SANDBOX_CREATING})
@@ -430,15 +443,18 @@ async def get_agent(config: RunnableConfig) -> Pregel:
         return _get_cached_sandbox_backend(_thread_id)
 
     model_id, profile_effort = await get_team_default_model("agent")
-    env_model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
+    # env_model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
+    env_model_id = SecretsManager.get("LLM_MODEL_ID")
     if env_model_id:
-        model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
+        # model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
+        model_id = SecretsManager.get("LLM_MODEL_ID", "deepseek-v4-flash")
         logger.info("Using LLM_MODEL_ID config override: %s", model_id)
 
     logger.info("Using team default agent model: model=%s effort=%s", model_id, profile_effort)
     subagent_model_id, subagent_effort = await get_team_default_subagent_model("agent")
     if env_model_id:
-        subagent_model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
+        # subagent_model_id = os.environ.get("LLM_MODEL_ID","deepseek-v4-flash")
+        subagent_model_id = SecretsManager.get("LLM_MODEL_ID", "deepseek-v4-flash")
         logger.info("Using LLM_MODEL_ID environment override for subagent: %s", subagent_model_id)
 
     logger.info(

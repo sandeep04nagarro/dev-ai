@@ -23,6 +23,7 @@ from deepagents.backends.sandbox import BaseSandbox
 from langsmith.sandbox import SandboxClientError
 
 from agent.utils.config import DockerConfig
+from agent.utils.secrets import SecretsManager
 from agent.utils.snapshot import create_registry
 from agent.utils.snapshot_state import clear_snapshot_state, get_snapshot_state
 
@@ -30,7 +31,8 @@ TIMEOUT = int(DockerConfig.TIMEOUT)
 
 logger = logging.getLogger(__name__)
 
-if os.environ.get("DEBUG_MODE", False):
+# if os.environ.get("DEBUG_MODE",False):
+if SecretsManager.get("DEBUG_MODE", False):
     logger.setLevel(logging.DEBUG)
 
 
@@ -228,7 +230,10 @@ def _enforce_command_guard(command: str) -> None:
     )
 
 
-SNAPSHOT_ENABLED = os.environ.get("SANDBOX_SNAPSHOT_ENABLED", "").lower() in (
+# SNAPSHOT_ENABLED = os.environ.get("SANDBOX_SNAPSHOT_ENABLED", "").lower() in (
+#     "1", "true", "on", "yes",
+# )
+SNAPSHOT_ENABLED = SecretsManager.get("SANDBOX_SNAPSHOT_ENABLED", "").lower() in (
     "1",
     "true",
     "on",

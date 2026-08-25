@@ -69,8 +69,8 @@ def test_create_docker_sandbox_legacy_reconnect():
 
 def test_resolve_from_snapshot_true_state_pulls_image():
     with (
-        patch("agent.utils.snapshot_state.get_snapshot_state", return_value=True),
-        patch("agent.utils.snapshot.create_registry") as mock_create_registry,
+        patch("agent.integrations.docker.get_snapshot_state", return_value=True),
+        patch("agent.integrations.docker.create_registry") as mock_create_registry,
         patch("agent.integrations.docker._create_container") as mock_create,
         patch("agent.integrations.docker.docker.from_env"),
     ):
@@ -88,8 +88,8 @@ def test_resolve_from_snapshot_true_state_pulls_image():
 
 def test_resolve_from_snapshot_true_state_pull_fails_falls_through():
     with (
-        patch("agent.utils.snapshot_state.get_snapshot_state", return_value=True),
-        patch("agent.utils.snapshot.create_registry") as mock_create_registry,
+        patch("agent.integrations.docker.get_snapshot_state", return_value=True),
+        patch("agent.integrations.docker.create_registry") as mock_create_registry,
         patch("agent.integrations.docker._create_container") as mock_create,
         patch("agent.integrations.docker.docker.from_env"),
     ):
@@ -107,7 +107,7 @@ def test_resolve_from_snapshot_true_state_pull_fails_falls_through():
 def test_resolve_from_snapshot_string_state_reconnects():
     with (
         patch("agent.integrations.docker.docker.from_env") as mock_from_env,
-        patch("agent.utils.snapshot_state.get_snapshot_state", return_value="existing-stopped"),
+        patch("agent.integrations.docker.get_snapshot_state", return_value="existing-stopped"),
     ):
         mock_client = MagicMock()
         fake = _FakeContainer("existing-stopped")
@@ -123,8 +123,8 @@ def test_resolve_from_snapshot_string_state_reconnects():
 
 def test_resolve_from_snapshot_string_state_container_gone():
     with (
-        patch("agent.utils.snapshot_state.get_snapshot_state", return_value="nonexistent-ctr"),
-        patch("agent.utils.snapshot_state.clear_snapshot_state") as mock_clear,
+        patch("agent.integrations.docker.get_snapshot_state", return_value="nonexistent-ctr"),
+        patch("agent.integrations.docker.clear_snapshot_state") as mock_clear,
         patch("agent.integrations.docker._create_container") as mock_create,
         patch("agent.integrations.docker.docker.from_env") as mock_from_env,
     ):
@@ -141,7 +141,7 @@ def test_resolve_from_snapshot_string_state_container_gone():
 
 def test_resolve_from_snapshot_no_state_creates_fresh():
     with (
-        patch("agent.utils.snapshot_state.get_snapshot_state", return_value=None),
+        patch("agent.integrations.docker.get_snapshot_state", return_value=None),
         patch("agent.integrations.docker._create_container") as mock_create,
         patch("agent.integrations.docker.docker.from_env"),
     ):

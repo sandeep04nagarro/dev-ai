@@ -88,11 +88,12 @@ def test_resolve_sandbox_work_dir_falls_back_to_home_when_work_dir_is_not_writab
     work_dir = resolve_sandbox_work_dir(backend)
 
     assert work_dir == "/home/daytona"
-    assert backend.commands == [
-        "test -d /workspace && test -w /workspace",
-        "pwd",
-        "test -d /home/daytona && test -w /home/daytona",
-    ]
+    # The probe sequence includes a randomised write test and Windows fallbacks,
+    # so assert the meaningful steps rather than an exact command list.
+    assert backend.commands[0] == "test -d /workspace && test -w /workspace"
+    assert any(c.startswith("touch /workspace/.open_swe_write_test_") for c in backend.commands)
+    assert "pwd" in backend.commands
+    assert backend.commands[-1] == "test -d /home/daytona && test -w /home/daytona"
 
 
 def test_resolve_sandbox_work_dir_caches_the_result() -> None:

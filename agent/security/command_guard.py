@@ -56,22 +56,43 @@ BLOCKED_COMMAND_MESSAGE = (
 
 _DESTRUCTIVE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     # Recursive force-delete of root or home
-    (re.compile(r"\brm\s+(?:-[a-zA-Z]*r[a-zA-Z]*f?|-[a-zA-Z]*f[a-zA-Z]*r?)\s+(?:--no-preserve-root\s+)?(?:/(?:\s|$|/|\*))"), "recursive delete of root filesystem"),
-    (re.compile(r"\brm\s+(?:-[a-zA-Z]*r[a-zA-Z]*f?)\s+(?:~|/root|/home|/usr|/var|/bin|/sbin|/boot|/etc)(?:\s|$|/)"), "recursive delete of system directory"),
+    (
+        re.compile(
+            r"\brm\s+(?:-[a-zA-Z]*r[a-zA-Z]*f?|-[a-zA-Z]*f[a-zA-Z]*r?)\s+(?:--no-preserve-root\s+)?(?:/(?:\s|$|/|\*))"
+        ),
+        "recursive delete of root filesystem",
+    ),
+    (
+        re.compile(
+            r"\brm\s+(?:-[a-zA-Z]*r[a-zA-Z]*f?)\s+(?:~|/root|/home|/usr|/var|/bin|/sbin|/boot|/etc)(?:\s|$|/)"
+        ),
+        "recursive delete of system directory",
+    ),
     (re.compile(r"\brm\s+--no-preserve-root\b"), "bypass of rm root protection"),
     # Fork bomb:  :(){ :|:& };:   and variants
     (re.compile(r":\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:"), "fork bomb"),
     (re.compile(r"\bbash\s+-c\s+['\"]?:\(\)"), "fork bomb via bash -c"),
     # Overwrite / wipe block devices
-    (re.compile(r"\bdd\b[^|;\n]*\bof\s*=\s*/dev/(?:sd[a-z]+|nvme\d+n\d+|hd[a-z]+|vd[a-z]+|disk\d+|mmcblk\d+)"), "raw write to block device"),
+    (
+        re.compile(
+            r"\bdd\b[^|;\n]*\bof\s*=\s*/dev/(?:sd[a-z]+|nvme\d+n\d+|hd[a-z]+|vd[a-z]+|disk\d+|mmcblk\d+)"
+        ),
+        "raw write to block device",
+    ),
     (re.compile(r"\bmkfs(?:\.\w+)?\b\s+/dev/"), "filesystem format on block device"),
     (re.compile(r"\bshred\b[^|;\n]*\s+/dev/"), "shred of block device"),
     # Halt / reboot / poweroff / init
     (re.compile(r"\b(shutdown|reboot|poweroff|halt)\b"), "system shutdown / reboot"),
     (re.compile(r"\binit\s+0\b"), "init 0 (shutdown)"),
-    (re.compile(r"\b(systemctl|service)\s+(?:stop|restart|disable|mask)\b"), "system service disruption"),
+    (
+        re.compile(r"\b(systemctl|service)\s+(?:stop|restart|disable|mask)\b"),
+        "system service disruption",
+    ),
     # Killing PID 1 / the container init
-    (re.compile(r"\bkill(?:\s+-\d+)?\s+(?:-?1\b|0\b|pidof\s+\w+|init\b)"), "kill of init / process group"),
+    (
+        re.compile(r"\bkill(?:\s+-\d+)?\s+(?:-?1\b|0\b|pidof\s+\w+|init\b)"),
+        "kill of init / process group",
+    ),
     (re.compile(r"\bkill(?:all|pkill)\b\s+-9\b"), "forceful killall"),
     # Writing to kernel / boot / proc-sys tunables
     (re.compile(r">\s*/boot/"), "write to /boot"),
@@ -112,19 +133,38 @@ _PRIVILEGE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
 
 _REMOTE_EXEC_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     # curl/wget piped to an interpreter
-    (re.compile(r"\b(curl|wget|fetch)\b[^|;\n]{0,200}?\|\s*(sh|bash|zsh|dash|python\d?|perl|ruby|node)\b"), "pipe remote content to shell interpreter"),
+    (
+        re.compile(
+            r"\b(curl|wget|fetch)\b[^|;\n]{0,200}?\|\s*(sh|bash|zsh|dash|python\d?|perl|ruby|node)\b"
+        ),
+        "pipe remote content to shell interpreter",
+    ),
     # curl ... | sh even when split via process substitution
-    (re.compile(r"\b(curl|wget)\b[^|;\n]{0,200}?<\s*\(\s*(sh|bash)\s*\)"), "process-substitution shell exec of remote content"),
+    (
+        re.compile(r"\b(curl|wget)\b[^|;\n]{0,200}?<\s*\(\s*(sh|bash)\s*\)"),
+        "process-substitution shell exec of remote content",
+    ),
     # bash <(curl ...) style
-    (re.compile(r"\b(bash|sh|zsh)\b\s+<\s*\(\s*(curl|wget)\b"), "shell reads script from remote fetch"),
+    (
+        re.compile(r"\b(bash|sh|zsh)\b\s+<\s*\(\s*(curl|wget)\b"),
+        "shell reads script from remote fetch",
+    ),
     # Reverse-shell classics
     (re.compile(r"\bnc\b[^|;\n]{0,80}?\s+-e\b"), "netcat reverse shell (-e)"),
     (re.compile(r"\bncat\b[^|;\n]{0,80}?\s+-e\b"), "ncat reverse shell (-e)"),
     (re.compile(r"\bbash\b[^|;\n]{0,80}?>&\s*/dev/tcp/"), "bash /dev/tcp reverse shell"),
-    (re.compile(r"\bpython\d?\b[^|;\n]{0,120}?socket\.socket\b"), "python reverse shell via socket"),
+    (
+        re.compile(r"\bpython\d?\b[^|;\n]{0,120}?socket\.socket\b"),
+        "python reverse shell via socket",
+    ),
     (re.compile(r"\bperl\b[^|;\n]{0,120}?socket\b"), "perl reverse shell via socket"),
     # Download-then-execute two-step obfuscation: curl -o /tmp/x ...; bash /tmp/x
-    (re.compile(r"\b(curl|wget)\b[^|;\n]{0,120}?\s+-o\s+\S+\s+\S+[^|;\n]{0,40}?;\s*(sh|bash)\s+\S+"), "download-then-execute remote script"),
+    (
+        re.compile(
+            r"\b(curl|wget)\b[^|;\n]{0,120}?\s+-o\s+\S+\s+\S+[^|;\n]{0,40}?;\s*(sh|bash)\s+\S+"
+        ),
+        "download-then-execute remote script",
+    ),
 )
 
 
@@ -142,13 +182,28 @@ _EXFIL_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^\s*env\s*$"), "dump environment variables (potential secret leak)"),
     (re.compile(r"\bexport\b[^|;\n]{0,5}$"), "bare export (dumps environment)"),
     (re.compile(r"\bcat\s+/proc/\d+/environ\b"), "read process environment (secret leak)"),
-    (re.compile(r"\b(echo|printf|cat)\b[^|;\n]{0,40}?\$\{?(GITHUB_TOKEN|GH_TOKEN|SECRET|API_KEY|ACCESS_TOKEN|PASSWORD|PRIVATE_KEY)\}?"), "echo credential value"),
-    (re.compile(r"\b(echo|printf|cat)\b[^|;\n]{0,40}?\$\{?(AWS_SECRET_ACCESS_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY)\}?"), "echo cloud/AI credential value"),
+    (
+        re.compile(
+            r"\b(echo|printf|cat)\b[^|;\n]{0,40}?\$\{?(GITHUB_TOKEN|GH_TOKEN|SECRET|API_KEY|ACCESS_TOKEN|PASSWORD|PRIVATE_KEY)\}?"
+        ),
+        "echo credential value",
+    ),
+    (
+        re.compile(
+            r"\b(echo|printf|cat)\b[^|;\n]{0,40}?\$\{?(AWS_SECRET_ACCESS_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY)\}?"
+        ),
+        "echo cloud/AI credential value",
+    ),
     (re.compile(r"\bcat\s+~?/\.ssh/(id_rsa|id_ed25519|id_ecdsa)\b"), "read private SSH key"),
     (re.compile(r"\bcat\s+~?/\.netrc\b"), "read .netrc credentials"),
     (re.compile(r"\bcat\s+/etc/shadow\b"), "read /etc/shadow"),
     # Posting secrets to a network endpoint
-    (re.compile(r"\b(curl|wget)\b[^|;\n]{0,120}?\$\{?(GITHUB_TOKEN|GH_TOKEN|SECRET|API_KEY|ACCESS_TOKEN|PRIVATE_KEY)\}?"), "send credential to remote endpoint"),
+    (
+        re.compile(
+            r"\b(curl|wget)\b[^|;\n]{0,120}?\$\{?(GITHUB_TOKEN|GH_TOKEN|SECRET|API_KEY|ACCESS_TOKEN|PRIVATE_KEY)\}?"
+        ),
+        "send credential to remote endpoint",
+    ),
 )
 
 
@@ -160,9 +215,17 @@ _NETWORK_EXFIL_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     # curl/wGET POST of a file to an arbitrary host (not github.com / the proxy).
     # Note: no ``\b`` before the flag group -- hyphens are not word characters,
     # so ``\b-`` never matches.  The ``--``/``-`` literal prefix is enough.
-    (re.compile(r"\b(curl|wget)\b[^|;\n]{0,40}?(?:--data(?:-binary)?|-d|-T|--upload-file)[^|;\n]{0,120}?@?/"), "upload local file to remote host"),
+    (
+        re.compile(
+            r"\b(curl|wget)\b[^|;\n]{0,40}?(?:--data(?:-binary)?|-d|-T|--upload-file)[^|;\n]{0,120}?@?/"
+        ),
+        "upload local file to remote host",
+    ),
     # tar/gzip piped over the network
-    (re.compile(r"\btar\b[^|;\n]{0,80}?\|\s*(nc|ncat|curl|wget)\b"), "stream archive to network endpoint"),
+    (
+        re.compile(r"\btar\b[^|;\n]{0,80}?\|\s*(nc|ncat|curl|wget)\b"),
+        "stream archive to network endpoint",
+    ),
 )
 
 

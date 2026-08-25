@@ -5,13 +5,14 @@ from __future__ import annotations
 import base64
 import logging
 import mimetypes
-import os
 import re
 from typing import Any
 from urllib.parse import urlparse
 
 import httpx
 from langchain_core.messages.content import create_image_block
+
+from agent.utils.secrets import SecretsManager
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,8 @@ async def fetch_image_block(
         #             image_url,
         #         )
         if host == "files.slack.com" or host.endswith(".files.slack.com"):
-            slack_bot_token = os.environ.get("SLACK_BOT_TOKEN", "")
+            # slack_bot_token = os.environ.get("SLACK_BOT_TOKEN", "")
+            slack_bot_token = SecretsManager.get("SLACK_BOT_TOKEN", "")
             if slack_bot_token:
                 headers = {"Authorization": f"Bearer {slack_bot_token}"}
             else:

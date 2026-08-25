@@ -90,12 +90,11 @@ def parse_github_review_command(body: str) -> tuple[bool, str | None]:
     """
     if not body:
         return False, None
-    # stripped = _DEV_AGENT_MENTION_RE.sub("", body).strip()
-    # match = _REVIEW_COMMAND_RE.match(stripped)
-    # if not match:
-    #     return False, None
-    # return True, match.group(1) or None
-    return True, None
+    stripped = _DEV_AGENT_MENTION_RE.sub("", body).strip()
+    match = _REVIEW_COMMAND_RE.match(stripped)
+    if not match:
+        return False, None
+    return True, match.group(1) or None
 
 
 def sanitize_github_comment_body(body: str) -> str:

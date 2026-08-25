@@ -4,8 +4,8 @@ import hashlib
 import hmac
 import json
 import logging
-import os
 import uuid
+import os
 
 # from collections.abc import AsyncIterator
 # from contextlib import asynccontextmanager
@@ -19,6 +19,7 @@ from langchain_core.messages.content import create_text_block
 from langgraph_sdk import get_client
 from langgraph_sdk.client import LangGraphClient
 
+import agent.bootstrap  # noqa: F401  — must precede any module that reads os.environ
 from agent.utils.complexity_classifier import (
     decide_tier,
     parse_recon_output,
@@ -40,6 +41,7 @@ from agent.utils.jira import (
 )
 from agent.utils.repo import extract_repo_from_text
 from agent.utils.repo_selector import select_repos_for_ticket
+from agent.utils.secrets import SecretsManager
 
 from .dashboard import router as dashboard_router
 from .dashboard.agent_overrides import (
@@ -121,9 +123,15 @@ from .utils.slack_feedback import (
 )
 from .utils.thread_ops import is_thread_active, queue_message_for_thread
 
+SecretsManager.load()
+
 logger = logging.getLogger(__name__)
 
-if os.environ.get("DEBUG_MODE", False):
+if SecretsManager.load():
+    logger.info("SECRETS LOADED")
+
+# if os.environ.get("DEBUG_MODE", False):
+if SecretsManager.get("DEBUG_MODE") in ("1", "true", "True", "on", "yes"):
     logger.setLevel(logging.DEBUG)
 
 
@@ -137,9 +145,34 @@ app = FastAPI(
     # lifespan=lifespan
 )
 
-DASHBOARD_ALLOWED_ORIGINS: list[str] = [
-    o.strip() for o in os.environ.get("DASHBOARD_ALLOWED_ORIGINS", "").split(",") if o.strip()
-]
+
+def _dashboard_origins() -> list[str]:
+    """Browser origins allowed to call ``/dashboard/api/*``.
+
+    Both variables accept a comma-separated list. Unset ones drop out entirely:
+    a ``None`` left in the list matches no origin, so CORSMiddleware would
+    install itself and then omit ``Access-Control-Allow-Origin`` on every
+    response — a failure that looks like the middleware is missing.
+    """
+    origins: list[str] = []
+    for value in (
+        SecretsManager.get("DASHBOARD_BASE_URL", ""),
+        SecretsManager.get("DASHBOARD_ALLOWED_ORIGINS", ""),
+    ):
+        for origin in value.split(","):
+            origin = origin.strip().rstrip("/")
+            if origin and origin not in origins:
+                origins.append(origin)
+    return origins
+
+
+DASHBOARD_ALLOWED_ORIGINS: list[str] = _dashboard_origins()
+if not DASHBOARD_ALLOWED_ORIGINS:
+    logger.warning(
+        "No dashboard CORS origins configured — set DASHBOARD_BASE_URL or "
+        "DASHBOARD_ALLOWED_ORIGINS, or browser requests will be blocked."
+    )
+
 if DASHBOARD_ALLOWED_ORIGINS:
     app.add_middleware(
         CORSMiddleware,
@@ -152,7 +185,8 @@ if DASHBOARD_ALLOWED_ORIGINS:
 app.include_router(dashboard_router)
 
 # LINEAR_WEBHOOK_SECRET = os.environ.get("LINEAR_WEBHOOK_SECRET", "")
-JIRA_WEBHOOK_SECRET = os.environ.get("JIRA_WEBHOOK_SECRET", "")
+# JIRA_WEBHOOK_SECRET = os.environ.get("JIRA_WEBHOOK_SECRET", "")
+JIRA_WEBHOOK_SECRET = SecretsManager.get("JIRA_WEBHOOK_SECRET", "")
 JIRA_BOT_NAME = JiraConfig.BOT_NAME
 # Mention string this worker responds to. In a multi-container deployment each
 # container is given a distinct WORKER_TAG (e.g. @cn) by the routing service.
@@ -168,8 +202,10 @@ DEFAULT_REPO_NAME = RepoConfig.DEFAULT_NAME
 SLACK_REPO_OWNER = RepoConfig.SLACK_OWNER or RepoConfig.DEFAULT_OWNER
 SLACK_REPO_NAME = RepoConfig.SLACK_NAME or RepoConfig.DEFAULT_NAME
 
-LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL", "http://localhost:2024")
-REVIEWER_ENABLED = os.environ.get("REVIEWER_ENABLED", "")
+# LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL", "http://localhost:2024")
+# REVIEWER_ENABLED = os.environ.get("REVIEWER_ENABLED", "")
+LANGGRAPH_URL = SecretsManager.get("LANGGRAPH_URL", "http://localhost:2024")
+REVIEWER_ENABLED = SecretsManager.get("REVIEWER_ENABLED", "")
 GITHUB_APP_NAME = RepoConfig.GITHUB_APP_NAME.strip()
 
 _AGENT_VERSION_METADATA: dict[str, str] = (
@@ -1654,8 +1690,10 @@ def build_jira_issue_prompt(
             "This issue contains attachments. Please run the following commands to download them into your workspace before beginning your analysis:\n\n"
             "```bash\n"
         )
-        jira_email = os.environ.get("JIRA_EMAIL", "")
-        jira_token = os.environ.get("JIRA_API_TOKEN", "")
+        # jira_email = os.environ.get("JIRA_EMAIL", "")
+        # jira_token = os.environ.get("JIRA_API_TOKEN", "")
+        jira_email = SecretsManager.get("JIRA_EMAIL", "")
+        jira_token = SecretsManager.get("JIRA_API_TOKEN", "")
         for att in attachments:
             url = att.get("content")
             filename = att.get("filename")
@@ -1734,8 +1772,10 @@ def build_recon_jira_issue_prompt(
             "This issue contains attachments. Run these commands to download them:\n\n"
             "```bash\n"
         )
-        jira_email = os.environ.get("JIRA_EMAIL", "")
-        jira_token = os.environ.get("JIRA_API_TOKEN", "")
+        # jira_email = os.environ.get("JIRA_EMAIL", "")
+        # jira_token = os.environ.get("JIRA_API_TOKEN", "")
+        jira_email = SecretsManager.get("JIRA_EMAIL", "")
+        jira_token = SecretsManager.get("JIRA_API_TOKEN", "")
         for att in attachments:
             url = att.get("content")
             filename = att.get("filename")
@@ -1828,12 +1868,14 @@ async def process_jira_issue(
     logger.debug(
         "Layer 0 tier=%s, RECON_ENABLED=%s, issue_key=%s",
         tier,
-        os.environ.get("RECON_ENABLED", False),
+        # os.environ.get("RECON_ENABLED", False),
+        SecretsManager.get("RECON_ENABLED"),
         issue_key,
     )
 
     recon_findings = None
-    if tier is None and os.environ.get("RECON_ENABLED", False) == "true":
+    # if tier is None and os.environ.get("RECON_ENABLED", False) == "true":
+    if tier is None and SecretsManager.get("RECON_ENABLED") in ("1", "true", "True", "on", "yes"):
         logger.debug("Starting recon flow for %s — tier=ambiguous", issue_key)
         # Check for existing recon findings via thread metadata
         existing_findings, existing_ticket_hash = None, None
@@ -1901,7 +1943,8 @@ If these findings still apply to this ticket, confirm reuse and exit.
                 "Invoking recon agent — thread_id=%s, step_limit=%d, model=%s",
                 thread_id,
                 recon_step_limit,
-                os.environ.get("RECON_MODEL_ID", "deepseek-v4-flash"),
+                # os.environ.get("RECON_MODEL_ID", "deepseek-v4-flash"),
+                SecretsManager.get("RECON_MODEL_ID", "deepseek-v4-flash"),
             )
             recon_state = await langgraph_client.runs.wait(
                 thread_id,
@@ -1964,7 +2007,8 @@ If these findings still apply to this ticket, confirm reuse and exit.
 
     # Set model based on tier (only when explicitly light)
     if tier == "light":
-        configurable["agent_model_id"] = os.environ.get("RECON_MODEL_ID", "deepseek-v4-flash")
+        # configurable["agent_model_id"] = os.environ.get("RECON_MODEL_ID", "deepseek-v4-flash")
+        configurable["agent_model_id"] = SecretsManager.get("RECON_MODEL_ID", "deepseek-v4-flash")
         configurable["agent_effort"] = "low"
         logger.debug("Set light model: %s", configurable["agent_model_id"])
 
@@ -2886,12 +2930,12 @@ async def process_github_pr_comment(payload: dict[str, Any], event_type: str) ->
             else:
                 logger.warning("Failed to persist branch_name metadata for thread %s", thread_id)
 
-        run_metadata = {
-            **_AGENT_VERSION_METADATA,
-            "langfuse_session_id": thread_id,  # noqa: F821
-            "langfuse_user_id": github_login or "unknown",
-        }
-    config = {  # noqa: F821
+    run_metadata = {
+        **_AGENT_VERSION_METADATA,
+        "langfuse_session_id": thread_id,
+        "langfuse_user_id": github_login or "unknown",
+    }
+    config = {
         "configurable": {
             "source": "github",
             "github_login": github_login,
@@ -2901,7 +2945,7 @@ async def process_github_pr_comment(payload: dict[str, Any], event_type: str) ->
         },
         "metadata": run_metadata,
     }
-    comment = payload.get("comment") or payload.get("review", {})
+    # comment = payload.get("comment") or payload.get("review", {})
     # is_review_request, _pr_url_override = parse_github_review_command(comment.get("body") or "")
 
     # email = GITHUB_USER_EMAIL_MAP.get(github_login, "")
@@ -2926,9 +2970,7 @@ async def process_github_pr_comment(payload: dict[str, Any], event_type: str) ->
         try:
             await persist_encrypted_github_token(thread_id, github_token, expires_at=expires_at)
         except Exception:
-            logger.warning(
-                "Could not persist bot token for PR review request thread %s", thread_id
-            )
+            logger.warning("Could not persist bot token for PR review request thread %s", thread_id)
 
     if not github_token:
         logger.warning("No GitHub token for thread %s, skipping", thread_id)
@@ -3356,7 +3398,6 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
     issue = payload.get("issue", {})
     pull_request = payload.get("pull_request", {})
     pr_author = (pull_request.get("user") or {}).get("login", "")
-    is_pull_request_comment = bool(event_type == "issue_comment" and issue.get("pull_request"))
     is_issue_comment = bool(event_type == "issue_comment" and not issue.get("pull_request"))
     is_issue_event = event_type == "issues"
     is_pull_request_event = event_type == "pull_request"
@@ -3472,8 +3513,7 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
         logger.debug("Ignoring unsupported GitHub %s action: %s", event_type, action)
         return {"status": "ignored", "reason": f"Unsupported GitHub {event_type} action: {action}"}
 
-    comment = payload.get("comment") or payload.get("review", {})
-    comment_body = (comment.get("body") or "") if comment else ""
+    # comment = payload.get("comment") or payload.get("review", {})
     if (
         event_type == "pull_request_review_comment"
         and _review_comment_reply_parent_id(payload) is not None

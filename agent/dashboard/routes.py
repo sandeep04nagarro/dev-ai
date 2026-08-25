@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hmac
 import logging
-import os
 from typing import Any
 
 import httpx
@@ -17,11 +16,17 @@ from agent.dashboard.project_repos import (
     api_get_project_repos,
     api_set_project_repos,
 )
+from agent.utils.secrets import SecretsManager
 
 from .admin import is_admin
 from .enabled_repos import (
     list_enabled_review_repos,
     set_review_repo_enabled,
+)
+from .metrics_api import (
+    get_dashboard_metrics,
+    list_dashboard_agents,
+    list_dashboard_sandboxes,
 )
 from .oauth import (
     COOKIE_NAME,
@@ -46,6 +51,12 @@ from .profiles import (
     list_profiles,
     upsert_access_token_from_github_response,
     upsert_profile,
+)
+from .repo_activity import (
+    get_pull_request_activity,
+    get_pull_request_detail,
+    get_repository_activity,
+    list_registered_projects,
 )
 from .review_style_jobs import (
     cancel_review_style_analysis,
@@ -101,14 +112,16 @@ _ADMIN_DEP = Depends(_admin_session)
 
 
 def _api_base_url() -> str:
-    v = os.environ.get("DASHBOARD_API_BASE_URL","").rstrip("/")
+    # v = os.environ.get("DASHBOARD_API_BASE_URL","").rstrip("/")
+    v = (SecretsManager.get("DASHBOARD_API_BASE_URL") or "").rstrip("/")
     if not v:
         raise HTTPException(500, "DASHBOARD_API_BASE_URL not configured")
     return v
 
 
 def _frontend_base_url() -> str:
-    v = os.environ.get("DASHBOARD_BASE_URL","").rstrip("/")
+    # v = os.environ.get("DASHBOARD_BASE_URL","").rstrip("/")
+    v = (SecretsManager.get("DASHBOARD_BASE_URL") or "").rstrip("/")
     if not v:
         raise HTTPException(500, "DASHBOARD_BASE_URL not configured")
     return v
@@ -149,7 +162,8 @@ def _clear_state_cookie(response: Response) -> None:
 
 @router.get("/auth/login")
 async def auth_login(request: Request, redirect_to: str | None = None) -> RedirectResponse:
-    client_id = os.environ.get("GITHUB_APP_CLIENT_ID", "")
+    # client_id = os.environ.get("GITHUB_APP_CLIENT_ID", "")
+    client_id = SecretsManager.get("GITHUB_APP_CLIENT_ID", "")
     if not client_id:
         raise HTTPException(500, "GITHUB_APP_CLIENT_ID not configured")
     safe_redirect = sanitize_redirect_to(redirect_to) or _frontend_base_url()
@@ -666,3 +680,58 @@ async def api_stream_thread(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )
+
+
+@router.get("/metrics")
+async def api_get_metrics(
+    session: dict[str, Any] = _SESSION_DEP,
+) -> dict[str, Any]:
+    return await get_dashboard_metrics(session["sub"])
+
+
+@router.get("/sandboxes")
+async def api_list_sandboxes(
+    session: dict[str, Any] = _SESSION_DEP,
+) -> list[dict[str, Any]]:
+    return await list_dashboard_sandboxes(session["sub"])
+
+
+@router.get("/agents")
+async def api_list_agents(
+    session: dict[str, Any] = _SESSION_DEP,
+) -> list[dict[str, Any]]:
+    return await list_dashboard_agents(session["sub"])
+
+
+@router.get("/repositories")
+async def api_repository_activity(
+    session: dict[str, Any] = _SESSION_DEP,
+) -> dict[str, Any]:
+    return await get_repository_activity(session["sub"])
+
+
+@router.get("/registered-projects")
+async def api_registered_projects(
+    _session: dict[str, Any] = _SESSION_DEP,
+) -> dict[str, Any]:
+    return {"projects": await list_registered_projects()}
+
+
+@router.get("/pull-requests")
+async def api_pull_request_activity(
+    session: dict[str, Any] = _SESSION_DEP,
+) -> dict[str, Any]:
+    return await get_pull_request_activity(session["sub"])
+
+
+@router.get("/pull-requests/{owner}/{repo}/{number}")
+async def api_pull_request_detail(
+    owner: str,
+    repo: str,
+    number: int,
+    session: dict[str, Any] = _SESSION_DEP,
+) -> dict[str, Any]:
+    try:
+        return await get_pull_request_detail(session["sub"], owner, repo, number)
+    except RuntimeError as exc:
+        raise HTTPException(502, str(exc)) from exc

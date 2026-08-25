@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import asyncio
-import os
+# import os
 import logging
 import re
 import uuid
@@ -10,12 +9,15 @@ from typing import Any
 from langgraph_sdk import get_client
 from langgraph_sdk.client import LangGraphClient
 
-from ..reviewer_findings import list_findings
 # from .langsmith import create_langsmith_feedback, delete_langsmith_feedback
+from agent.utils.secrets import SecretsManager
+
+from ..reviewer_findings import list_findings
 
 logger = logging.getLogger(__name__)
 
-LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL","http://localhost:2024")
+# LANGGRAPH_URL = os.environ.get("LANGGRAPH_URL","http://localhost:2024")
+LANGGRAPH_URL = SecretsManager.get("LANGGRAPH_URL", "http://localhost:2024")
 
 GITHUB_FEEDBACK_REACTIONS: dict[str, float] = {
     "+1": 1.0,
@@ -187,7 +189,7 @@ async def process_github_reaction(
         logger.debug("Finding %s has no LangSmith run id for feedback", finding.get("id"))
         return
 
-    active_reactions = await _update_reaction_state(
+    await _update_reaction_state(
         langgraph_client,
         repo_key=repo_key,
         run_id=run_id,
@@ -197,17 +199,17 @@ async def process_github_reaction(
         added=added,
     )
 
-    key = _feedback_key(owner, repo_name, user_login, comment_id)
-    source_info = {
-        "source": "github_review_reaction",
-        "owner": owner,
-        "repo": repo_name,
-        "pr_number": pr_number,
-        "comment_id": comment_id,
-        "finding_id": finding.get("id"),
-        "user_login": user_login,
-    }
-    score = _score_reactions(active_reactions)
+    # key = _feedback_key(owner, repo_name, user_login, comment_id)
+    # source_info = {
+    #     "source": "github_review_reaction",
+    #     "owner": owner,
+    #     "repo": repo_name,
+    #     "pr_number": pr_number,
+    #     "comment_id": comment_id,
+    #     "finding_id": finding.get("id"),
+    #     "user_login": user_login,
+    # }
+    # score = _score_reactions(active_reactions)
     # if score is None:
     #     success = await asyncio.to_thread(delete_langsmith_feedback, run_id, key)
     # else:

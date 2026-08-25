@@ -6,7 +6,8 @@ import asyncio
 import hashlib
 import hmac
 import logging
-import os
+
+# import os
 import random
 import re
 import time
@@ -17,12 +18,15 @@ from urllib.parse import urlparse
 import httpx
 from langgraph_sdk.client import LangGraphClient
 
+from .secrets import SecretsManager
+
 # from agent.utils.langsmith import get_langsmith_trace_url
 
 logger = logging.getLogger(__name__)
 
 SLACK_API_BASE_URL = "https://slack.com/api"
-SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
+# SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
+SLACK_BOT_TOKEN = SecretsManager.get("SLACK_BOT_TOKEN", "")
 GITHUB_PR_URL_RE = re.compile(r"https?://(?:www\.)?github\.com/[^\s<>|]+/[^\s<>|]+/pull/\d+")
 URL_RE = re.compile(r"https?://[^\s<>|]+")
 

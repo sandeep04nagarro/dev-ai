@@ -1,14 +1,17 @@
 import hashlib
 import json
 import logging
-import os
+
+# import os
 from typing import Any
 
 from agent.utils.config import ReconConfig
+from agent.utils.secrets import SecretsManager
 
 logger = logging.getLogger(__name__)
 
-if os.environ.get("DEBUG_MODE",False):
+# if os.environ.get("DEBUG_MODE",False):
+if SecretsManager.get("DEBUG_MODE") in ("1", "true", "True", "on", "yes"):
     logger.setLevel(logging.DEBUG)
 
 
@@ -25,7 +28,7 @@ def run_layer_0(fields: dict[str, Any]) -> str | None:
         fields.get("labels"),
         fields.get("issuetype", {}).get("name"),
     )
-    labels = {l.lower() for l in fields.get("labels", [])}
+    labels = {label.lower() for label in fields.get("labels", [])}
     issuetype = (fields.get("issuetype", {}) or {}).get("name", "").lower()
 
     light_signals = {"typo", "documentation", "docs", "chore"}
@@ -76,7 +79,6 @@ def parse_recon_output(state: dict[str, Any]) -> dict[str, Any]:
     """
     for key, value in state.items():
         logger.debug("%s : %.50s", key, value)
-    values = state.get("values", {})
     messages = state.get("messages", [])
     logger.debug("parse_recon_output — messages_count=%d", len(messages))
 
