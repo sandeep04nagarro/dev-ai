@@ -382,7 +382,7 @@ def generate_thread_id_from_issue(issue_id: str) -> str:
     Returns:
         A UUID-formatted thread ID derived from the issue ID
     """
-    hash_bytes = hashlib.sha256(f"linear-issue:{issue_id}".encode()).hexdigest()
+    hash_bytes = hashlib.sha256(f"{issue_id}".encode()).hexdigest()
     return (
         f"{hash_bytes[:8]}-{hash_bytes[8:12]}-{hash_bytes[12:16]}-"
         f"{hash_bytes[16:20]}-{hash_bytes[20:32]}"
