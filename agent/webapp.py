@@ -1,5 +1,6 @@
 """Custom FastAPI routes for LangGraph server."""
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -1532,8 +1533,19 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
         webhook_event,
         len(allowed_repos),
     )
+
+    async def _safe_process_jira(*args, **kwargs):
+        issue_id = args[0].get("id", "") if args else ""
+        thread_id = generate_thread_id_from_issue(f"jira:{issue_id}") if issue_id else ""
+        try:
+            await process_jira_issue(*args, **kwargs)
+        except Exception:
+            logger.exception("process_jira_issue failed for %s", issue_id)
+            await signal_runtime_completion(thread_id, "failed")
+            raise
+
     background_tasks.add_task(
-        process_jira_issue, issue, allowed_repos, comment_body, author_name, author_email
+        _safe_process_jira, issue, allowed_repos, comment_body, author_name, author_email
     )
 
     return {
@@ -1799,6 +1811,33 @@ def build_recon_jira_issue_prompt(
         attachment_section=attachment_section,
         comments_text=comments_text,
         prior_findings_section=prior_findings_section,
+    )
+
+
+async def signal_runtime_completion(thread_id: str, status: str) -> None:
+    """POST {thread_id, status} to the runtime wrapper. Best-effort, never raises."""
+    base_url = SecretsManager.get("RUNTIME_WRAPPER_URL", "")
+    if not base_url or not thread_id:
+        return
+    url = base_url.rstrip("/") + "/internal/completions"
+    payload = {"thread_id": thread_id, "status": status}
+    for attempt in range(1, 4):
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, json=payload, timeout=10.0)
+            if response.status_code < 400:
+                logger.info(
+                    "Runtime completion signalled for thread %s (status=%s, attempt %d)",
+                    thread_id, status, attempt,
+                )
+                return
+        except Exception as exc:
+            logger.warning(
+                "Runtime completion attempt %d for %s failed: %s", attempt, thread_id, exc
+            )
+        await asyncio.sleep(1.0)
+    logger.error(
+        "Failed to signal runtime completion for thread %s after 3 attempts", thread_id
     )
 
 
@@ -3505,7 +3544,18 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
             return gate_rejection
 
         logger.info("Accepted GitHub issue webhook, scheduling background task")
-        background_tasks.add_task(process_github_issue, payload, event_type)
+
+        async def _safe_process_github_issue(p: dict[str, Any], et: str) -> None:
+            issue_id = str(p.get("issue", {}).get("id", ""))
+            thread_id = generate_thread_id_from_issue(f"github:{issue_id}") if issue_id else ""
+            try:
+                await process_github_issue(p, et)
+            except Exception:
+                logger.exception("process_github_issue failed for %s", issue_id)
+                await signal_runtime_completion(thread_id, "failed")
+                raise
+
+        background_tasks.add_task(_safe_process_github_issue, payload, event_type)
         return {"status": "accepted", "message": "Processing GitHub issue event"}
 
     action = payload.get("action", "")
@@ -3571,7 +3621,18 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
         return {"status": "accepted", "message": f"Processing {event_type} event"}
 
     if is_issue_comment:
-        background_tasks.add_task(process_github_issue, payload, event_type)
+
+        async def _safe_process_github_issue_comment(p: dict[str, Any], et: str) -> None:
+            issue_id = str(p.get("issue", {}).get("id", ""))
+            thread_id = generate_thread_id_from_issue(f"github:{issue_id}") if issue_id else ""
+            try:
+                await process_github_issue(p, et)
+            except Exception:
+                logger.exception("process_github_issue failed for %s", issue_id)
+                await signal_runtime_completion(thread_id, "failed")
+                raise
+
+        background_tasks.add_task(_safe_process_github_issue_comment, payload, event_type)
         return {"status": "accepted", "message": "Processing GitHub issue comment event"}
 
     logger.info("Ignoring unsupported GitHub payload shape for event=%s", event_type)
