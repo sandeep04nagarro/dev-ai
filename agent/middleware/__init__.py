@@ -15,6 +15,7 @@ from agent.middleware.jira_plan_sync import JiraPlanSyncMiddleware
 from agent.middleware.model_fallback import ModelFallbackMiddleware
 from agent.middleware.multi_repo_clone import MultiRepoCloneMiddleware
 from agent.middleware.notify_step_limit import notify_step_limit_reached
+from agent.middleware.pr_title_enforcement import PRTitleEnforcementMiddleware
 from agent.middleware.recon_fallback import ReconFallbackMiddleware
 from agent.middleware.refresh_slack_status import SlackAssistantStatusMiddleware
 from agent.middleware.sandbox_circuit_breaker import SandboxCircuitBreakerMiddleware
@@ -75,6 +76,7 @@ def build_server_middleware_list(
         # can self-correct; DockerSandbox.execute() is a second backstop.
         CommandSafetyMiddleware(),
         BranchEnforcementMiddleware(),
+        PRTitleEnforcementMiddleware(),
         # --- Existing tool/state hygiene ------------------------------------
         SanitizeToolInputsMiddleware(),
         MultiRepoCloneMiddleware(),
