@@ -33,7 +33,7 @@ from .thread_api import _metadata_repo, _run_status_to_agent_status
 
 logger = logging.getLogger(__name__)
 
-AGENT_BRANCH_PREFIX = "open-swe/"
+AGENT_BRANCH_PREFIX = "devai-agent/"
 
 _MAX_TRACKED_REPOS = 25
 _MAX_PR_PAGES = 3
