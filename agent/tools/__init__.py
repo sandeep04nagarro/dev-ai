@@ -13,6 +13,8 @@ from .jira_comment import jira_comment
 from .list_findings import list_findings
 from .publish_review import publish_review
 from .refresh_github_token import refresh_github_token
+from .github_reply_to_review_thread import github_reply_to_review_thread
+from .github_resolve_review_thread import github_resolve_review_thread
 from .reply_to_finding_thread import reply_to_finding_thread
 from .request_pr_review import request_pr_review
 from .resolve_finding_thread import resolve_finding_thread
@@ -37,6 +39,8 @@ __all__ = [
     "publish_review",
     "refresh_github_token",
     "request_pr_review",
+    "github_reply_to_review_thread",
+    "github_resolve_review_thread",
     "reply_to_finding_thread",
     "resolve_finding_thread",
     "slack_read_thread_messages",
