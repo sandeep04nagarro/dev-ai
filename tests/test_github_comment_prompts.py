@@ -185,3 +185,10 @@ def test_build_github_issue_prompt_only_wraps_external_comments() -> None:
     assert github_comments.UNTRUSTED_GITHUB_COMMENT_OPEN_TAG in prompt
     assert github_comments.UNTRUSTED_GITHUB_COMMENT_CLOSE_TAG in prompt
     assert "External Untrusted Comments" not in prompt
+
+def test_construct_system_prompt_includes_github_review_reply_guidance() -> None:
+    from agent.prompt import construct_system_prompt
+    prompt = construct_system_prompt(working_dir="/workspace")
+    assert "github_reply_to_review_thread" in prompt
+    assert "github_resolve_review_thread" in prompt
+    assert "github_review_comment_id" in prompt

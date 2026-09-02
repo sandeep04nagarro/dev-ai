@@ -159,6 +159,22 @@ For questions or status checks (no code changes needed):
     )
 )
 
+GITHUB_PR_REVIEW_SECTION = """---
+
+### GitHub PR Review Comments
+
+When your task was triggered from a GitHub PR and the prompt contains entries like:
+`**author** (file: `path`, line: N) <!-- github_review_comment_id: 123 -->: body`
+those are **inline human review comments** that must be addressed individually.
+
+After fixing the code and pushing your branch (`git push origin <branch>`):
+1. For EACH inline comment you addressed, call `github_reply_to_review_thread(comment_id, body)` — explain what you changed and include the commit SHA if available. One call per comment_id.
+2. Immediately after each reply, call `github_resolve_review_thread(comment_id)` to resolve that thread (resolve always, even when dismissing).
+3. Still post a single high-level summary with `{gh_auth_prefix}gh pr comment` as today — do not skip it.
+If an inline comment asks for something you intentionally did not change, still reply with \"Dismissed: <reason>\" explaining why, then resolve to leave a clean state. Human can reply to resolved thread and re-trigger @dev-agent if they disagree. The threads block `Open/Resolved PR Review Threads` in the prompt gives full thread context for re-trigger.
+"""
+
+
 TOOL_USAGE_SECTION = " ".join(
     (
         """---
@@ -186,7 +202,10 @@ Format messages using Slack's mrkdwn format, NOT standard Markdown.
     To mention/tag a user, use `<@USER_ID>` (e.g. `<@U06KD8BFY95>`). You can find user IDs in the conversation context next to display names (e.g. `@Name(U06KD8BFY95)`).
 
 #### GitHub via `gh`
-Use `{gh_auth_prefix}gh <command>` for GitHub operations: repository discovery, cloning, issues, pull requests, reviews, comments, labels, check status, and workflow operations. For local working-tree state, use `git` directly. Never pass a real GitHub token to `gh`.""",
+Use `{gh_auth_prefix}gh <command>` for GitHub operations: repository discovery, cloning, issues, pull requests, reviews, comments, labels, check status, and workflow operations. For local working-tree state, use `git` directly. Never pass a real GitHub token to `gh`.
+
+#### `github_reply_to_review_thread` / `github_resolve_review_thread`
+Replies inside a human inline review thread and resolves it (resolve always, even when dismissing → reply \"Dismissed: <reason>\" then resolve for clean state). Use the numeric `comment_id` from `<!-- github_review_comment_id: N -->` in the prompt. Tool has dedup guard: if bot already replied in thread, it returns success with skipped:true — do not retry. Always reply before resolving.""",
     )
 )
 
@@ -445,6 +464,7 @@ SYSTEM_PROMPT_TEMPLATE = (
     + FILE_MANAGEMENT_SECTION
     + TASK_EXECUTION_SECTION
     + TOOL_USAGE_SECTION
+    + GITHUB_PR_REVIEW_SECTION
     + TOOL_BEST_PRACTICES_SECTION
     + CODING_STANDARDS_SECTION
     + CORE_BEHAVIOR_SECTION
