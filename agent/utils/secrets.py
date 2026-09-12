@@ -107,7 +107,12 @@ class SecretsManager:
     def get(cls, key: str, default: str | None = None) -> str | None:
         if not cls._loaded:
             cls.load()
-        return cls._secrets.get(key) or os.environ.get(key, default)
+        val = cls._secrets.get(key)
+        if val is not None:
+            logger.debug('%s is sourced from AWS', key)
+            return val
+        logger.debug('%s is sourced from the OS environ', key)
+        return os.environ.get(key, default)
 
     @classmethod
     def __getitem__(cls, key: str) -> str:
