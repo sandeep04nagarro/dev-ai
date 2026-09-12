@@ -1928,9 +1928,10 @@ async def process_jira_issue(
 
         current_ticket_hash = ticket_hash(description, comments)
 
-        if existing_findings and existing_ticket_hash == current_ticket_hash:
+        if existing_findings and existing_ticket_hash:
             # Hash matches — reuse the router-seeded findings (no local recon run).
             recon_findings = existing_findings
+            logger.info("recon_findings in the function: %s", recon_findings)
             logger.info("Recon reuse — hash match for %s", issue_key)
         else:
             logger.info(
@@ -2019,6 +2020,7 @@ async def process_jira_issue(
 
         tier = decide_tier(recon_findings, fields)
         logger.debug("Tier after recon: %s", tier)
+        logger.info("recon_findings: %s", recon_findings)
 
     prompt = build_jira_issue_prompt(
         selected_repos,
@@ -2031,6 +2033,8 @@ async def process_jira_issue(
         user_name=user_name,
         recon_findings=recon_findings,
     )
+
+    logger.info("The finalized prompt is %.50s", prompt)
 
     # Use the first repo as the primary 'repo' config to satisfy single-repo downstream checks,
     # but store selected_repos as well
