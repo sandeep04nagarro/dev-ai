@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import hmac
 import logging
+import os
 import re
 from typing import Any
 
@@ -35,8 +36,8 @@ __all__ = [
     "verify_github_signature",
 ]
 
-DEV_AGENT_TAGS = ("@dev-agent",)
-_DEV_AGENT_MENTION_RE = re.compile(r"(?i)@(?:dev-agent-dev|dev-agent)\b")
+DEV_AGENT_TAGS = (os.environ.get("WORKER_TAG", "@dev-agent").lower(),)
+_DEV_AGENT_MENTION_RE = re.compile(r"(?i)@(?:dev-agent)\b")
 _REVIEW_COMMAND_RE = re.compile(r"(?i)\Areview(?:\s+(https?://\S+))?\s*\Z")
 UNTRUSTED_GITHUB_COMMENT_OPEN_TAG = "<dangerous-external-untrusted-users-comment>"
 UNTRUSTED_GITHUB_COMMENT_CLOSE_TAG = "</dangerous-external-untrusted-users-comment>"

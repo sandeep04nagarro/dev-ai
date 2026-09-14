@@ -116,14 +116,23 @@ def get_langfuse_handler() -> object | None:
     if _langfuse_handler is not None:
         return _langfuse_handler
 
-    # if not bool(os.environ.get("LANGFUSE_SECRET_KEY") and os.environ.get("LANGFUSE_PUBLIC_KEY")):
-    if not bool(
-        SecretsManager.get("LANGFUSE_SECRET_KEY") and SecretsManager.get("LANGFUSE_PUBLIC_KEY")
-    ):
+    secret_key = SecretsManager.get("LANGFUSE_SECRET_KEY")
+    public_key = SecretsManager.get("LANGFUSE_PUBLIC_KEY")
+    if not secret_key or not public_key:
         return None
 
+    base_url = (SecretsManager.get("LANGFUSE_BASE_URL") or "https://cloud.langfuse.com").rstrip("/")
+
     try:
+        from langfuse import Langfuse
         from langfuse.langchain import CallbackHandler
+
+        # Pre-initialize with explicit params so get_client() finds it
+        Langfuse(
+            public_key=public_key,
+            secret_key=secret_key,
+            base_url=base_url,
+        )
 
         _langfuse_handler = CallbackHandler()
         logger.info("Langfuse tracing enabled (CallbackHandler)")
