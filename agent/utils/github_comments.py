@@ -449,7 +449,11 @@ def build_pr_prompt(
             line = c.get("line", "")
             loc = f" (file: `{path}`, line: {line})" if path else ""
             comment_id = c.get("comment_id")
-            id_tag = f" <!-- github_review_comment_id: {comment_id} -->" if isinstance(comment_id, int) else ""
+            id_tag = (
+                f" <!-- github_review_comment_id: {comment_id} -->"
+                if isinstance(comment_id, int)
+                else ""
+            )
             lines.append(f"\n**{author}**{loc}{id_tag}:\n{body}\n")
         else:
             lines.append(f"\n**{author}**:\n{body}\n")

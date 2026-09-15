@@ -5,7 +5,11 @@ from typing import Any
 
 from langgraph.config import get_config
 
-from ..reviewer_publish import fetch_pr_review_threads, fetch_review_thread_id_for_comment, resolve_review_thread
+from ..reviewer_publish import (
+    fetch_pr_review_threads,
+    fetch_review_thread_id_for_comment,
+    resolve_review_thread,
+)
 from ..utils.github_token import get_github_token
 
 
@@ -27,7 +31,9 @@ def github_resolve_review_thread(comment_id: int) -> dict[str, Any]:
     token = get_github_token()
     if not token:
         return {"success": False, "error": "No GitHub token available"}
-    return asyncio.run(_async(comment_id, str(repo_config["owner"]), str(repo_config["name"]), pr_number, token))
+    return asyncio.run(
+        _async(comment_id, str(repo_config["owner"]), str(repo_config["name"]), pr_number, token)
+    )
 
 
 async def _async(comment_id: int, owner: str, repo: str, pr_number: int, token: str):
@@ -41,7 +47,9 @@ async def _async(comment_id: int, owner: str, repo: str, pr_number: int, token: 
         return {"success": True, "thread_id": thread_id}
     # Idempotency: mutation can return False when thread was already resolved.
     try:
-        threads = await fetch_pr_review_threads(owner=owner, repo=repo, pr_number=pr_number, token=token)
+        threads = await fetch_pr_review_threads(
+            owner=owner, repo=repo, pr_number=pr_number, token=token
+        )
         for t in threads:
             if t.get("id") == thread_id and t.get("is_resolved"):
                 return {"success": True, "thread_id": thread_id, "already_resolved": True}

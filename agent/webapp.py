@@ -3072,11 +3072,18 @@ async def process_github_pr_comment(payload: dict[str, Any], event_type: str) ->
     threads_block = None
     try:
         from agent.reviewer_publish import fetch_pr_review_threads as _fetch_threads
-        threads = await _fetch_threads(owner=repo_config.get("owner",""), repo=repo_config.get("name",""), pr_number=pr_number, token=github_token)
+
+        threads = await _fetch_threads(
+            owner=repo_config.get("owner", ""),
+            repo=repo_config.get("name", ""),
+            pr_number=pr_number,
+            token=github_token,
+        )
         if threads:
             # Use reviewer formatting if available, else minimal inline
             try:
                 from agent.reviewer import _format_pr_review_threads as _fmt
+
                 threads_block = _fmt(threads)
             except Exception:
                 # Minimal fallback: render open threads with id, path, body snippet
@@ -3094,7 +3101,10 @@ async def process_github_pr_comment(payload: dict[str, Any], event_type: str) ->
                 threads_block = "\n".join(lines)
     except Exception:
         import logging as _lg
-        _lg.getLogger(__name__).warning("Failed to fetch threads block for PR prompt", exc_info=True)
+
+        _lg.getLogger(__name__).warning(
+            "Failed to fetch threads block for PR prompt", exc_info=True
+        )
     prompt = build_pr_prompt(comments, pr_url, repo_config=repo_config, threads_block=threads_block)
     await _trigger_or_queue_run(
         thread_id,

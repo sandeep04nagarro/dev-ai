@@ -50,17 +50,31 @@ def github_reply_to_review_thread(comment_id: int, body: str) -> dict[str, Any]:
 async def _async(comment_id: int, body: str, owner: str, repo: str, pr_number: int, token: str):
     # Dedup guard B: scan thread for existing bot reply
     try:
-        threads = await fetch_pr_review_threads(owner=owner, repo=repo, pr_number=pr_number, token=token)
+        threads = await fetch_pr_review_threads(
+            owner=owner, repo=repo, pr_number=pr_number, token=token
+        )
         for t in threads:
             cids = {c.get("id") for c in (t.get("comments") or []) if isinstance(c, dict)}
             if comment_id in cids:
-                bot_replies = [c for c in t.get("comments", []) if c.get("author") == "open-swe[bot]"]
+                bot_replies = [
+                    c for c in t.get("comments", []) if c.get("author") == "open-swe[bot]"
+                ]
                 if bot_replies:
-                    return {"success": True, "skipped": True, "reason": "bot already replied in thread", "thread_id": t.get("id")}
+                    return {
+                        "success": True,
+                        "skipped": True,
+                        "reason": "bot already replied in thread",
+                        "thread_id": t.get("id"),
+                    }
     except Exception:
         pass  # best-effort guard; fall through to actual reply
     resp = await reply_to_review_comment(
-        owner=owner, repo=repo, pr_number=pr_number, review_comment_id=comment_id, body=body, token=token
+        owner=owner,
+        repo=repo,
+        pr_number=pr_number,
+        review_comment_id=comment_id,
+        body=body,
+        token=token,
     )
     if resp is None:
         return {"success": False, "error": "GitHub did not accept the reply"}
