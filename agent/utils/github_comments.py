@@ -437,6 +437,7 @@ def build_pr_prompt(
     comments: list[dict[str, Any]],
     pr_url: str,
     repo_config: dict[str, str] | None = None,
+    threads_block: str | None = None,
 ) -> str:
     """Format PR comments into a human message for the agent."""
     lines: list[str] = []
@@ -447,11 +448,19 @@ def build_pr_prompt(
             path = c.get("path", "")
             line = c.get("line", "")
             loc = f" (file: `{path}`, line: {line})" if path else ""
-            lines.append(f"\n**{author}**{loc}:\n{body}\n")
+            comment_id = c.get("comment_id")
+            id_tag = (
+                f" <!-- github_review_comment_id: {comment_id} -->"
+                if isinstance(comment_id, int)
+                else ""
+            )
+            lines.append(f"\n**{author}**{loc}{id_tag}:\n{body}\n")
         else:
             lines.append(f"\n**{author}**:\n{body}\n")
 
     comments_text = "".join(lines)
+    if threads_block:
+        comments_text += f"\n\n## Open/Resolved PR Review Threads (full context for re-trigger)\n{threads_block}\n"
     repo_line = ""
     if repo_config:
         repo_line = f"## Repository: {repo_config.get('owner')}/{repo_config.get('name')}\n\n"

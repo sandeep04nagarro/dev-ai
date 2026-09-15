@@ -52,6 +52,8 @@ from .dashboard.team_settings import get_team_default_model, get_team_default_su
 from .prompt import construct_system_prompt
 from .tools import (
     fetch_url,
+    github_reply_to_review_thread,
+    github_resolve_review_thread,
     http_request,
     jira_comment,
     # linear_comment,
@@ -603,6 +605,8 @@ async def get_agent(config: RunnableConfig) -> Pregel:
             create_prs=always_create_prs,
         ),
         tools=[
+            github_reply_to_review_thread,
+            github_resolve_review_thread,
             http_request,
             fetch_url,
             web_search,

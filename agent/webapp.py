@@ -3068,7 +3068,44 @@ async def process_github_pr_comment(payload: dict[str, Any], event_type: str) ->
         logger.info("No comments found since last @dev-agent tag for PR %s", pr_number)
         return
 
-    prompt = build_pr_prompt(comments, pr_url, repo_config=repo_config)
+    # Fetch threads block for re-trigger context (resolve-always + dedup guard)
+    threads_block = None
+    try:
+        from agent.reviewer_publish import fetch_pr_review_threads as _fetch_threads
+
+        threads = await _fetch_threads(
+            owner=repo_config.get("owner", ""),
+            repo=repo_config.get("name", ""),
+            pr_number=pr_number,
+            token=github_token,
+        )
+        if threads:
+            # Use reviewer formatting if available, else minimal inline
+            try:
+                from agent.reviewer import _format_pr_review_threads as _fmt
+
+                threads_block = _fmt(threads)
+            except Exception:
+                # Minimal fallback: render open threads with id, path, body snippet
+                lines = ["<pr_review_threads>"]
+                for th in threads[:20]:
+                    path = th.get("path") or "unknown"
+                    status = "resolved" if th.get("is_resolved") else "open"
+                    lines.append(f'  <thread location="{path}" status="{status}">')
+                    for c in th.get("comments", [])[:5]:
+                        author = c.get("author", "unknown")
+                        body = (c.get("body") or "")[:500]
+                        lines.append(f'    <comment author="{author}">{body}</comment>')
+                    lines.append("  </thread>")
+                lines.append("</pr_review_threads>")
+                threads_block = "\n".join(lines)
+    except Exception:
+        import logging as _lg
+
+        _lg.getLogger(__name__).warning(
+            "Failed to fetch threads block for PR prompt", exc_info=True
+        )
+    prompt = build_pr_prompt(comments, pr_url, repo_config=repo_config, threads_block=threads_block)
     await _trigger_or_queue_run(
         thread_id,
         prompt,
