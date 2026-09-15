@@ -37,7 +37,7 @@ __all__ = [
 ]
 
 DEV_AGENT_TAGS = (os.environ.get("WORKER_TAG", "@dev-agent").lower(),)
-_DEV_AGENT_MENTION_RE = re.compile(r"(?i)@(?:dev-agent)\b")
+_DEV_AGENT_MENTION_RE = re.compile(r"(?i)@(?:dev-agent)(?:-\w+)?\b")
 _REVIEW_COMMAND_RE = re.compile(r"(?i)\Areview(?:\s+(https?://\S+))?\s*\Z")
 UNTRUSTED_GITHUB_COMMENT_OPEN_TAG = "<dangerous-external-untrusted-users-comment>"
 UNTRUSTED_GITHUB_COMMENT_CLOSE_TAG = "</dangerous-external-untrusted-users-comment>"

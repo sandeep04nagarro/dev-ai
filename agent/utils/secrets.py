@@ -109,9 +109,9 @@ class SecretsManager:
             cls.load()
         val = cls._secrets.get(key)
         if val is not None:
-            logger.debug('%s is sourced from AWS', key)
+            logger.debug("%s is sourced from AWS", key)
             return val
-        logger.debug('%s is sourced from the OS environ', key)
+        logger.debug("%s is sourced from the OS environ", key)
         return os.environ.get(key, default)
 
     @classmethod
