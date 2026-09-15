@@ -1829,7 +1829,9 @@ async def signal_runtime_completion(thread_id: str, status: str) -> None:
             if response.status_code < 400:
                 logger.info(
                     "Runtime completion signalled for thread %s (status=%s, attempt %d)",
-                    thread_id, status, attempt,
+                    thread_id,
+                    status,
+                    attempt,
                 )
                 return
         except Exception as exc:
@@ -1837,9 +1839,7 @@ async def signal_runtime_completion(thread_id: str, status: str) -> None:
                 "Runtime completion attempt %d for %s failed: %s", attempt, thread_id, exc
             )
         await asyncio.sleep(1.0)
-    logger.error(
-        "Failed to signal runtime completion for thread %s after 3 attempts", thread_id
-    )
+    logger.error("Failed to signal runtime completion for thread %s after 3 attempts", thread_id)
 
 
 async def process_jira_issue(
@@ -1929,7 +1929,7 @@ async def process_jira_issue(
 
         current_ticket_hash = ticket_hash(description, comments)
 
-        if existing_findings and existing_ticket_hash:
+        if existing_findings and existing_ticket_hash == current_ticket_hash:
             # Hash matches — reuse the router-seeded findings (no local recon run).
             recon_findings = existing_findings
             logger.info("recon_findings in the function: %s", recon_findings)
@@ -1940,84 +1940,84 @@ async def process_jira_issue(
                 "proceeding without recon findings",
                 issue_key,
             )
-#         else:
-#             logger.debug(
-#                 "Recon fresh — existing_findings=%s, hash_match=%s",
-#                 bool(existing_findings),
-#                 existing_ticket_hash == current_ticket_hash if existing_ticket_hash else "N/A",
-#             )
-#             # Run reconnaissance agent
-#             prior_section = ""
-#             if existing_findings:
-#                 prior_section = f"""\
-# ## Prior Reconnaissance Findings
-# If these findings still apply to this ticket, confirm reuse and exit.
+        #         else:
+        #             logger.debug(
+        #                 "Recon fresh — existing_findings=%s, hash_match=%s",
+        #                 bool(existing_findings),
+        #                 existing_ticket_hash == current_ticket_hash if existing_ticket_hash else "N/A",
+        #             )
+        #             # Run reconnaissance agent
+        #             prior_section = ""
+        #             if existing_findings:
+        #                 prior_section = f"""\
+        # ## Prior Reconnaissance Findings
+        # If these findings still apply to this ticket, confirm reuse and exit.
 
-# ```json
-# {json.dumps(existing_findings, indent=2)}
-# ```"""
-#             logger.debug("prior section for recon prompt : %s", prior_section)
+        # ```json
+        # {json.dumps(existing_findings, indent=2)}
+        # ```"""
+        #             logger.debug("prior section for recon prompt : %s", prior_section)
 
-#             recon_prompt = build_recon_jira_issue_prompt(
-#                 selected_repos=selected_repos,
-#                 issue_key=issue_key,
-#                 issue_id=issue_id,
-#                 title=title,
-#                 description=description,
-#                 comments=comments,
-#                 attachments=attachments,
-#                 prior_findings_section=prior_section,
-#                 user_name=user_name,
-#             )
+        #             recon_prompt = build_recon_jira_issue_prompt(
+        #                 selected_repos=selected_repos,
+        #                 issue_key=issue_key,
+        #                 issue_id=issue_id,
+        #                 title=title,
+        #                 description=description,
+        #                 comments=comments,
+        #                 attachments=attachments,
+        #                 prior_findings_section=prior_section,
+        #                 user_name=user_name,
+        #             )
 
-#             recon_step_limit = ReconConfig.STEP_LIMIT
-#             recon_configurable = {
-#                 "repo": primary_repo,
-#                 "selected_repos": selected_repos,
-#                 "jira_issue": {
-#                     "id": issue_id,
-#                     "key": issue_key,
-#                     "title": title,
-#                 },
-#                 "recon_step_limit": recon_step_limit,
-#                 "source": "jira",
-#                 "thread_id": thread_id,
-#             }
+        #             recon_step_limit = ReconConfig.STEP_LIMIT
+        #             recon_configurable = {
+        #                 "repo": primary_repo,
+        #                 "selected_repos": selected_repos,
+        #                 "jira_issue": {
+        #                     "id": issue_id,
+        #                     "key": issue_key,
+        #                     "title": title,
+        #                 },
+        #                 "recon_step_limit": recon_step_limit,
+        #                 "source": "jira",
+        #                 "thread_id": thread_id,
+        #             }
 
-#             logger.debug(
-#                 "Invoking recon agent — thread_id=%s, step_limit=%d, model=%s",
-#                 thread_id,
-#                 recon_step_limit,
-#                 # os.environ.get("RECON_MODEL_ID", "deepseek-v4-flash"),
-#                 SecretsManager.get("RECON_MODEL_ID", "deepseek-v4-flash"),
-#             )
-#             recon_state = await langgraph_client.runs.wait(
-#                 thread_id,
-#                 "recon_agent",
-#                 input={"messages": [{"role": "user", "content": recon_prompt}]},
-#                 config={"configurable": recon_configurable, "metadata": run_metadata},
-#                 if_not_exists="create",
-#             )
-#             recon_findings = parse_recon_output(recon_state)
-#             logger.debug("Recon agent result — findings=%s", recon_findings)
+        #             logger.debug(
+        #                 "Invoking recon agent — thread_id=%s, step_limit=%d, model=%s",
+        #                 thread_id,
+        #                 recon_step_limit,
+        #                 # os.environ.get("RECON_MODEL_ID", "deepseek-v4-flash"),
+        #                 SecretsManager.get("RECON_MODEL_ID", "deepseek-v4-flash"),
+        #             )
+        #             recon_state = await langgraph_client.runs.wait(
+        #                 thread_id,
+        #                 "recon_agent",
+        #                 input={"messages": [{"role": "user", "content": recon_prompt}]},
+        #                 config={"configurable": recon_configurable, "metadata": run_metadata},
+        #                 if_not_exists="create",
+        #             )
+        #             recon_findings = parse_recon_output(recon_state)
+        #             logger.debug("Recon agent result — findings=%s", recon_findings)
 
-#             # Store findings in thread metadata for future reuse
-#             if recon_findings:
-#                 try:
-#                     await langgraph_client.threads.update(
-#                         thread_id,
-#                         metadata={
-#                             "recon_findings": recon_findings,
-#                             "recon_ticket_hash": current_ticket_hash,
-#                         },
-#                     )
-#                     logger.debug(
-#                         "Successfully updated thread metadata to store recon_findings and recon_ticket_hash"
-#                     )
-#                 except Exception:
-#                     logger.warning(
-#                         "Could not update thread metadata to store recon_findings and recon_ticket_hash"
-#                     )
+        #             # Store findings in thread metadata for future reuse
+        #             if recon_findings:
+        #                 try:
+        #                     await langgraph_client.threads.update(
+        #                         thread_id,
+        #                         metadata={
+        #                             "recon_findings": recon_findings,
+        #                             "recon_ticket_hash": current_ticket_hash,
+        #                         },
+        #                     )
+        #                     logger.debug(
+        #                         "Successfully updated thread metadata to store recon_findings and recon_ticket_hash"
+        #                     )
+        #                 except Exception:
+        #                     logger.warning(
+        #                         "Could not update thread metadata to store recon_findings and recon_ticket_hash"
+        #                     )
 
         tier = decide_tier(recon_findings, fields)
         logger.debug("Tier after recon: %s", tier)
