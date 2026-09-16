@@ -1500,27 +1500,62 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
         return {"status": "ignored", "reason": "No issue data"}
 
     project_key = issue_key.split("-")[0] if "-" in issue_key else ""
+    issue_id = issue.get("id", "")
 
-    # Resolve repos from comment body (if any) first
-    selected_repos = extract_repo_from_text(comment_body, default_owner=DEFAULT_REPO_OWNER)
+    # Check seeded thread metadata first (wrapper populates before this runs)
+    selected_repos = []
+    repo_source = "none"
+    thread_id = generate_thread_id_from_issue(f"jira:{issue_id}")
+    try:
+        client = get_client(url=LANGGRAPH_URL)
+        thread = await client.threads.get(thread_id)
+        metadata = thread.metadata or {}
+        seeded = metadata.get("selected_repos") or metadata.get("repos") or []
+        if seeded:
+            selected_repos = [
+                {"owner": r["owner"], "name": r["name"], "type": r.get("type", "backend")}
+                for r in seeded
+                if r.get("owner") and r.get("name")
+            ]
+            if len(selected_repos) > 10:
+                logger.warning(
+                    "Seeded repos count %d exceeds cap, validate-only", len(selected_repos)
+                )
+            repo_source = "seeded"
+    except Exception:
+        logger.debug("Thread metadata lookup failed for %s", thread_id, exc_info=True)
 
     if not selected_repos:
-        fields = issue.get("fields", {})
-        summary = fields.get("summary") or "No title"
-        description = fields.get("description")
-        description = extract_adf_text(description) if description else "No description"
+        # Fallback: resolve from comment body, then registry
+        selected_repos = extract_repo_from_text(comment_body, default_owner=DEFAULT_REPO_OWNER)
+        if selected_repos:
+            repo_source = "local:comment-override"
+        else:
+            fields = issue.get("fields", {})
+            summary = fields.get("summary") or "No title"
+            description = fields.get("description")
+            description = extract_adf_text(description) if description else "No description"
 
-        selected_repos = await select_repos_for_ticket(
-            project_key=project_key,
-            issue_key=issue_key,
-            summary=summary,
-            description=description,
-            triggering_comment=comment_body,
-        )
+            selected_repos = await select_repos_for_ticket(
+                project_key=project_key,
+                issue_key=issue_key,
+                summary=summary,
+                description=description,
+                triggering_comment=comment_body,
+            )
+            repo_source = "local:registry"
 
     if not selected_repos:
         logger.warning("Could not resolve any repo for Jira issue %s", issue_key)
         return {"status": "ignored", "reason": "Could not resolve repository mapping"}
+
+    logger.info(
+        "repo source=%s project=%s issue=%s count=%d",
+        repo_source,
+        project_key,
+        issue_key,
+        len(selected_repos),
+    )
 
     # Check allowed lists
     allowed_repos = [r for r in selected_repos if _is_repo_allowed(r)]
