@@ -117,6 +117,47 @@ def test_build_pr_prompt_sanitizes_reserved_tags_from_comment_body() -> None:
     assert "[blocked-untrusted-comment-tag-close]" in prompt
 
 
+def test_build_pr_prompt_includes_review_comment_id_for_thread_reply() -> None:
+    prompt = github_comments.build_pr_prompt(
+        [
+            {
+                "author": "human-reviewer",
+                "body": "Please rename this variable",
+                "type": "review_comment",
+                "comment_id": 123456,
+                "path": "src/foo.py",
+                "line": 42,
+            },
+            {
+                "author": "trigger-user",
+                "body": "@dev-agent please address the review comments",
+                "type": "review",
+                "comment_id": 999,
+            },
+        ],
+        "https://github.com/o/r/pull/5",
+        repo_config={"owner": "o", "name": "r"},
+    )
+    assert "123456" in prompt
+    assert "src/foo.py" in prompt
+    assert github_comments.UNTRUSTED_GITHUB_COMMENT_OPEN_TAG in prompt
+    # id tag must be outside untrusted wrapper (trusted metadata)
+    assert "<!-- github_review_comment_id: 123456 -->" in prompt
+
+
+def test_build_pr_prompt_includes_threads_block() -> None:
+    threads_block = "<pr_review_threads>\n  <thread>test</thread>\n</pr_review_threads>"
+    prompt = github_comments.build_pr_prompt(
+        [
+            {"author": "a", "body": "hi", "type": "pr_comment"},
+        ],
+        "https://github.com/o/r/pull/5",
+        threads_block=threads_block,
+    )
+    assert threads_block in prompt
+    assert "Open/Resolved PR Review Threads" in prompt
+
+
 def test_build_github_issue_prompt_only_wraps_external_comments() -> None:
     prompt = webapp.build_github_issue_prompt(
         {"owner": "langchain-ai", "name": "open-swe"},
@@ -144,3 +185,12 @@ def test_build_github_issue_prompt_only_wraps_external_comments() -> None:
     assert github_comments.UNTRUSTED_GITHUB_COMMENT_OPEN_TAG in prompt
     assert github_comments.UNTRUSTED_GITHUB_COMMENT_CLOSE_TAG in prompt
     assert "External Untrusted Comments" not in prompt
+
+
+def test_construct_system_prompt_includes_github_review_reply_guidance() -> None:
+    from agent.prompt import construct_system_prompt
+
+    prompt = construct_system_prompt(working_dir="/workspace")
+    assert "github_reply_to_review_thread" in prompt
+    assert "github_resolve_review_thread" in prompt
+    assert "github_review_comment_id" in prompt

@@ -80,7 +80,9 @@ There is intentionally no after-agent safety net that opens a PR for the agent. 
 All tools live in `agent/tools/` and are flat-imported via `agent/tools/__init__.py`. The set is intentionally small and curated — see README "Tools — Curated, Not Accumulated".
 
 Wired into `get_agent`:
-`http_request`, `fetch_url`, `web_search`, `linear_comment`, `linear_create_issue`, `linear_delete_issue`, `linear_get_issue`, `linear_get_issue_comments`, `linear_list_teams`, `linear_update_issue`, `request_pr_review`, `slack_read_thread_messages`, `slack_thread_reply`.
+`http_request`, `fetch_url`, `web_search`, `linear_comment`, `linear_create_issue`, `linear_delete_issue`, `linear_get_issue`, `linear_get_issue_comments`, `linear_list_teams`, `linear_update_issue`, `request_pr_review`, `slack_read_thread_messages`, `slack_thread_reply`, `github_reply_to_review_thread`, `github_resolve_review_thread`.
+
+GitHub PR inline thread handling: dev-agent triggered via `pull_request_review` (Submit review + Request Changes with `@dev-agent` in body) replies inline per human thread via `github_reply_to_review_thread` (one reply per `comment_id` with dedup guard), resolves each thread via `github_resolve_review_thread` (resolve-always, even when dismissing, idempotent), and still posts a high-level `gh pr comment` summary. `fetch_pr_review_threads` block is injected into the prompt for re-trigger context so a human reply on a resolved thread retains original body.
 
 Reviewer-only tools (in `agent/reviewer.py`): `add_finding`, `update_finding`, `list_findings`, `publish_review`. The review-style analyzer uses `save_review_style` (exported as `save_review_style_prompt`).
 
