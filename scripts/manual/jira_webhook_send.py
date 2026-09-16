@@ -1,8 +1,8 @@
 """Send a signed test Jira webhook to trigger a multi-repo agent run."""
+
 import hashlib
 import hmac
 import json
-import sys
 
 import httpx
 
@@ -74,11 +74,9 @@ payload = {
 
 # ── Sign & send ────────────────────────────────────────────────────
 body = json.dumps(payload).encode("utf-8")
-signature = hmac.new(
-    JIRA_WEBHOOK_SECRET.encode("utf-8"), body, hashlib.sha256
-).hexdigest()
+signature = hmac.new(JIRA_WEBHOOK_SECRET.encode("utf-8"), body, hashlib.sha256).hexdigest()
 
-print(f"📤 Sending Jira webhook for OSJ-99 ...")
+print("📤 Sending Jira webhook for OSJ-99 ...")
 print(f"   Signature: sha256={signature}")
 
 resp = httpx.post(

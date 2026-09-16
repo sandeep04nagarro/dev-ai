@@ -31,7 +31,7 @@ class TestNotifyStepLimitReached:
         assert result is None
         mock_post.assert_awaited_once()
         assert mock_post.await_args.args[0:2] == ("C123", "171.123")
-        assert "maximum step limit" in mock_post.await_args.args[2]
+        assert "maximum execution limit" in mock_post.await_args.args[2]
 
     @pytest.mark.asyncio
     async def test_posts_slack_reply_for_list_content_with_limit_marker(self) -> None:

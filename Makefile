@@ -11,7 +11,7 @@ dev:
 	uv run langgraph dev --no-reload
 
 run:
-	uv run uvicorn agent.webapp:app --reload --port 8000
+	uv run uvicorn agent.webapp:app --reload --host 0.0.0.0 --port 8000
 
 install:
 	uv pip install -e .

@@ -51,12 +51,12 @@ __all__ = [
 # stray zero-width joiners.
 _INVISIBLE_CHAR_RE = re.compile(
     "["
-    "\u00ad"        # soft hyphen
+    "\u00ad"  # soft hyphen
     "\u200b-\u200f"  # zero-width space / non-joiner / joiner / LRE / RLO
     "\u2028-\u202e"  # line/paragraph separators + bidi overrides
     "\u2060-\u206f"  # word joiner + invisible operators + deprecated format
     "\u0080-\u009f"  # C1 control characters
-    "\ufeff"         # zero-width no-break space (BOM)
+    "\ufeff"  # zero-width no-break space (BOM)
     "]"
 )
 

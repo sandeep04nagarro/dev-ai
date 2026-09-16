@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 # import os
 import logging
 from typing import Any
@@ -171,7 +170,7 @@ async def process_slack_reaction(
         )
         return
 
-    active_reactions = await _update_reaction_state(
+    await _update_reaction_state(
         langgraph_client,
         channel_id=channel_id,
         run_id=run_id,
@@ -181,14 +180,14 @@ async def process_slack_reaction(
         added=added,
     )
 
-    key = _feedback_key(channel_id, user_id, message_ts)
-    source_info = {
-        "source": "slack_reaction",
-        "channel_id": channel_id,
-        "message_ts": message_ts,
-        "user_id": user_id,
-    }
-    score = _score_reactions(active_reactions)
+    # key = _feedback_key(channel_id, user_id, message_ts)
+    # source_info = {
+    #     "source": "slack_reaction",
+    #     "channel_id": channel_id,
+    #     "message_ts": message_ts,
+    #     "user_id": user_id,
+    # }
+    # score = _score_reactions(active_reactions)
     # if score is None:
     #     success = await asyncio.to_thread(delete_langsmith_feedback, run_id, key)
     # else:

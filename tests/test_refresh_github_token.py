@@ -1,5 +1,4 @@
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from deepagents.backends.protocol import SandboxBackendProtocol
@@ -23,7 +22,7 @@ def test_refresh_github_token_success(
     # Setup mocks
     mock_get_config.return_value = {"configurable": {"thread_id": "test_thread_123"}}
     mock_sandbox_backends.get.return_value = mock_sandbox_backend
-    
+
     # get_github_app_installation_token is an async function
     mock_get_token.return_value = "fake_github_token_xyz"
 
@@ -32,10 +31,10 @@ def test_refresh_github_token_success(
 
     # Assertions
     assert result == {"success": True}
-    
+
     mock_sandbox_backends.get.assert_called_once_with("test_thread_123")
     mock_get_token.assert_called_once()
-    
+
     # Verify that the sandbox execute method was called with the correct bash command
     mock_sandbox_backend.execute.assert_called_once_with(
         "printf '%s' 'fake_github_token_xyz' | gh auth login --with-token"

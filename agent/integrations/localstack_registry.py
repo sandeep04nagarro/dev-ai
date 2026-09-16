@@ -4,6 +4,7 @@ import logging
 
 import docker
 import httpx
+
 from agent.utils.config import DockerConfig
 
 TIMEOUT = int(DockerConfig.TIMEOUT)
@@ -18,6 +19,7 @@ class LocalStackRegistry:
     Provides a connection to the localstack container registry services
     for pushing and pulling container snapshots.
     """
+
     def __init__(self, endpoint: str = "http://localhost:4566"):
         self._registry_uri = endpoint
         self._docker = None

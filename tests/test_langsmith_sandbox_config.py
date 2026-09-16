@@ -1,8 +1,16 @@
 """Tests for LangSmith sandbox env-var configuration parsing."""
 
+# ruff: noqa: E402
+
 from unittest.mock import patch
 
 import pytest
+
+pytest.skip(
+    "agent.integrations.langsmith is currently commented out; re-enable this module "
+    "when the LangSmith sandbox provider is restored.",
+    allow_module_level=True,
+)
 
 from agent.integrations.langsmith import (
     DEFAULT_SANDBOX_DELETE_AFTER_STOP_SECONDS,

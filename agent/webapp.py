@@ -1,5 +1,6 @@
 """Custom FastAPI routes for LangGraph server."""
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -22,14 +23,12 @@ from langgraph_sdk.client import LangGraphClient
 import agent.bootstrap  # noqa: F401  — must precede any module that reads os.environ
 from agent.utils.complexity_classifier import (
     decide_tier,
-    parse_recon_output,
     run_layer_0,
     ticket_hash,
 )
 from agent.utils.config import (
     BuildConfig,
     JiraConfig,
-    ReconConfig,
     RepoConfig,
     SandboxConfig,
     SlackConfig,
@@ -51,6 +50,7 @@ from .dashboard.agent_overrides import (
 from .dashboard.enabled_repos import is_review_repo_enabled, list_enabled_review_repos  # noqa: F401
 from .dashboard.profiles import get_profile
 from .dashboard.team_settings import get_team_settings
+from .langfuse_proxy import router as langfuse_proxy_router
 from .reviewer_findings import (
     REVIEWER_THREAD_KIND,
     Finding,
@@ -87,7 +87,6 @@ from .utils.github_comments import (
     fetch_pr_comments_since_last_tag,
     format_github_comment_body_for_prompt,
     get_thread_id_from_branch,
-    parse_github_review_command,
     react_to_github_comment,
     sanitize_github_comment_body,
     verify_github_signature,
@@ -146,6 +145,7 @@ app = FastAPI(
     # lifespan=lifespan
 )
 
+
 def _dashboard_origins() -> list[str]:
     """Browser origins allowed to call ``/dashboard/api/*``.
 
@@ -183,11 +183,14 @@ if DASHBOARD_ALLOWED_ORIGINS:
     )
 
 app.include_router(dashboard_router)
-
+app.include_router(langfuse_proxy_router)
 # LINEAR_WEBHOOK_SECRET = os.environ.get("LINEAR_WEBHOOK_SECRET", "")
 # JIRA_WEBHOOK_SECRET = os.environ.get("JIRA_WEBHOOK_SECRET", "")
 JIRA_WEBHOOK_SECRET = SecretsManager.get("JIRA_WEBHOOK_SECRET", "")
 JIRA_BOT_NAME = JiraConfig.BOT_NAME
+# Mention string this worker responds to. In a multi-container deployment each
+# container is given a distinct WORKER_TAG (e.g. @cn) by the routing service.
+WORKER_TAG = os.environ.get("WORKER_TAG", "@dev-agent").lower()
 # GITHUB_WEBHOOK_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "")
 GITHUB_WEBHOOK_SECRET = SecretsManager.get("GITHUB_WEBHOOK_SECRET", "")
 # SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET", "")
@@ -380,7 +383,7 @@ def generate_thread_id_from_issue(issue_id: str) -> str:
     Returns:
         A UUID-formatted thread ID derived from the issue ID
     """
-    hash_bytes = hashlib.sha256(f"linear-issue:{issue_id}".encode()).hexdigest()
+    hash_bytes = hashlib.sha256(f"{issue_id}".encode()).hexdigest()
     return (
         f"{hash_bytes[:8]}-{hash_bytes[8:12]}-{hash_bytes[12:16]}-"
         f"{hash_bytes[16:20]}-{hash_bytes[20:32]}"
@@ -1386,10 +1389,10 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
     """Handle Jira Cloud webhooks."""
     body = await request.body()
 
-    signature = request.headers.get("X-Hub-Signature", "")
-    if not verify_jira_signature(body, signature, JIRA_WEBHOOK_SECRET):
-        logger.warning("Invalid Jira webhook signature")
-        raise HTTPException(status_code=401, detail="Invalid signature")
+    # signature = request.headers.get("X-Hub-Signature", "")
+    # if not verify_jira_signature(body, signature, JIRA_WEBHOOK_SECRET):
+    #     logger.warning("Invalid Jira webhook signature")
+    #     raise HTTPException(status_code=401, detail="Invalid signature")
 
     try:
         payload = json.loads(body)
@@ -1427,9 +1430,9 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
                         text_parts.append(inner.get("text", ""))
             comment_body = " ".join(text_parts)
 
-        if "@dev-agent" not in comment_body.lower():
-            logger.debug("Ignoring Jira webhook: comment doesn't mention @dev-agent")
-            return {"status": "ignored", "reason": "Comment doesn't mention @dev-agent"}
+        if WORKER_TAG not in comment_body.lower():
+            logger.debug("Ignoring Jira webhook: comment doesn't mention %s", WORKER_TAG)
+            return {"status": "ignored", "reason": f"Comment doesn't mention {WORKER_TAG}"}
 
         author_name = author.get("displayName", "User")
         author_email = author.get("emailAddress", "")
@@ -1566,8 +1569,19 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
         webhook_event,
         len(allowed_repos),
     )
+
+    async def _safe_process_jira(*args, **kwargs):
+        issue_id = args[0].get("id", "") if args else ""
+        thread_id = generate_thread_id_from_issue(f"jira:{issue_id}") if issue_id else ""
+        try:
+            await process_jira_issue(*args, **kwargs)
+        except Exception:
+            logger.exception("process_jira_issue failed for %s", issue_id)
+            await signal_runtime_completion(thread_id, "failed")
+            raise
+
     background_tasks.add_task(
-        process_jira_issue, issue, allowed_repos, comment_body, author_name, author_email
+        _safe_process_jira, issue, allowed_repos, comment_body, author_name, author_email
     )
 
     return {
@@ -1951,90 +1965,98 @@ async def process_jira_issue(
         current_ticket_hash = ticket_hash(description, comments)
 
         if existing_findings and existing_ticket_hash == current_ticket_hash:
-            # Hash matches - reuse existing findings
+            # Hash matches — reuse the router-seeded findings (no local recon run).
             recon_findings = existing_findings
-            logger.debug("Recon reuse — hash match, findings=%s", recon_findings)
+            logger.info("recon_findings in the function: %s", recon_findings)
+            logger.info("Recon reuse — hash match for %s", issue_key)
         else:
-            logger.debug(
-                "Recon fresh — existing_findings=%s, hash_match=%s",
-                bool(existing_findings),
-                existing_ticket_hash == current_ticket_hash if existing_ticket_hash else "N/A",
+            logger.info(
+                "No reusable seeded recon for %s (hash mismatch or absent) — "
+                "proceeding without recon findings",
+                issue_key,
             )
-            # Run reconnaissance agent
-            prior_section = ""
-            if existing_findings:
-                prior_section = f"""\
-## Prior Reconnaissance Findings
-If these findings still apply to this ticket, confirm reuse and exit.
+        #         else:
+        #             logger.debug(
+        #                 "Recon fresh — existing_findings=%s, hash_match=%s",
+        #                 bool(existing_findings),
+        #                 existing_ticket_hash == current_ticket_hash if existing_ticket_hash else "N/A",
+        #             )
+        #             # Run reconnaissance agent
+        #             prior_section = ""
+        #             if existing_findings:
+        #                 prior_section = f"""\
+        # ## Prior Reconnaissance Findings
+        # If these findings still apply to this ticket, confirm reuse and exit.
 
-```json
-{json.dumps(existing_findings, indent=2)}
-```"""
-            logger.debug("prior section for recon prompt : %s", prior_section)
+        # ```json
+        # {json.dumps(existing_findings, indent=2)}
+        # ```"""
+        #             logger.debug("prior section for recon prompt : %s", prior_section)
 
-            recon_prompt = build_recon_jira_issue_prompt(
-                selected_repos=selected_repos,
-                issue_key=issue_key,
-                issue_id=issue_id,
-                title=title,
-                description=description,
-                comments=comments,
-                attachments=attachments,
-                prior_findings_section=prior_section,
-                user_name=user_name,
-            )
+        #             recon_prompt = build_recon_jira_issue_prompt(
+        #                 selected_repos=selected_repos,
+        #                 issue_key=issue_key,
+        #                 issue_id=issue_id,
+        #                 title=title,
+        #                 description=description,
+        #                 comments=comments,
+        #                 attachments=attachments,
+        #                 prior_findings_section=prior_section,
+        #                 user_name=user_name,
+        #             )
 
-            recon_step_limit = ReconConfig.STEP_LIMIT
-            recon_configurable = {
-                "repo": primary_repo,
-                "selected_repos": selected_repos,
-                "jira_issue": {
-                    "id": issue_id,
-                    "key": issue_key,
-                    "title": title,
-                },
-                "recon_step_limit": recon_step_limit,
-                "source": "jira",
-                "thread_id": thread_id,
-            }
+        #             recon_step_limit = ReconConfig.STEP_LIMIT
+        #             recon_configurable = {
+        #                 "repo": primary_repo,
+        #                 "selected_repos": selected_repos,
+        #                 "jira_issue": {
+        #                     "id": issue_id,
+        #                     "key": issue_key,
+        #                     "title": title,
+        #                 },
+        #                 "recon_step_limit": recon_step_limit,
+        #                 "source": "jira",
+        #                 "thread_id": thread_id,
+        #             }
 
-            logger.debug(
-                "Invoking recon agent — thread_id=%s, step_limit=%d, model=%s",
-                thread_id,
-                recon_step_limit,
-                # os.environ.get("RECON_MODEL_ID", "deepseek-v4-flash"),
-                SecretsManager.get("RECON_MODEL_ID", "deepseek-v4-flash"),
-            )
-            recon_state = await langgraph_client.runs.wait(
-                thread_id,
-                "recon_agent",
-                input={"messages": [{"role": "user", "content": recon_prompt}]},
-                config={"configurable": recon_configurable, "metadata": run_metadata},
-                if_not_exists="create",
-            )
-            recon_findings = parse_recon_output(recon_state)
-            logger.debug("Recon agent result — findings=%s", recon_findings)
+        #             logger.debug(
+        #                 "Invoking recon agent — thread_id=%s, step_limit=%d, model=%s",
+        #                 thread_id,
+        #                 recon_step_limit,
+        #                 # os.environ.get("RECON_MODEL_ID", "deepseek-v4-flash"),
+        #                 SecretsManager.get("RECON_MODEL_ID", "deepseek-v4-flash"),
+        #             )
+        #             recon_state = await langgraph_client.runs.wait(
+        #                 thread_id,
+        #                 "recon_agent",
+        #                 input={"messages": [{"role": "user", "content": recon_prompt}]},
+        #                 config={"configurable": recon_configurable, "metadata": run_metadata},
+        #                 if_not_exists="create",
+        #             )
+        #             recon_findings = parse_recon_output(recon_state)
+        #             logger.debug("Recon agent result — findings=%s", recon_findings)
 
-            # Store findings in thread metadata for future reuse
-            if recon_findings:
-                try:
-                    await langgraph_client.threads.update(
-                        thread_id,
-                        metadata={
-                            "recon_findings": recon_findings,
-                            "recon_ticket_hash": current_ticket_hash,
-                        },
-                    )
-                    logger.debug(
-                        "Successfully updated thread metadata to store recon_findings and recon_ticket_hash"
-                    )
-                except Exception:
-                    logger.warning(
-                        "Could not update thread metadata to store recon_findings and recon_ticket_hash"
-                    )
+        #             # Store findings in thread metadata for future reuse
+        #             if recon_findings:
+        #                 try:
+        #                     await langgraph_client.threads.update(
+        #                         thread_id,
+        #                         metadata={
+        #                             "recon_findings": recon_findings,
+        #                             "recon_ticket_hash": current_ticket_hash,
+        #                         },
+        #                     )
+        #                     logger.debug(
+        #                         "Successfully updated thread metadata to store recon_findings and recon_ticket_hash"
+        #                     )
+        #                 except Exception:
+        #                     logger.warning(
+        #                         "Could not update thread metadata to store recon_findings and recon_ticket_hash"
+        #                     )
 
         tier = decide_tier(recon_findings, fields)
         logger.debug("Tier after recon: %s", tier)
+        logger.info("recon_findings: %s", recon_findings)
 
     prompt = build_jira_issue_prompt(
         selected_repos,
@@ -2047,6 +2069,8 @@ If these findings still apply to this ticket, confirm reuse and exit.
         user_name=user_name,
         recon_findings=recon_findings,
     )
+
+    logger.info("The finalized prompt is %.50s", prompt)
 
     # Use the first repo as the primary 'repo' config to satisfy single-repo downstream checks,
     # but store selected_repos as well
@@ -2989,12 +3013,12 @@ async def process_github_pr_comment(payload: dict[str, Any], event_type: str) ->
             else:
                 logger.warning("Failed to persist branch_name metadata for thread %s", thread_id)
 
-        run_metadata = {
-            **_AGENT_VERSION_METADATA,
-            "langfuse_session_id": thread_id,  # noqa: F821
-            "langfuse_user_id": github_login or "unknown",
-        }
-    config = {  # noqa: F821
+    run_metadata = {
+        **_AGENT_VERSION_METADATA,
+        "langfuse_session_id": thread_id,
+        "langfuse_user_id": github_login or "unknown",
+    }
+    config = {
         "configurable": {
             "source": "github",
             "github_login": github_login,
@@ -3004,7 +3028,7 @@ async def process_github_pr_comment(payload: dict[str, Any], event_type: str) ->
         },
         "metadata": run_metadata,
     }
-    comment = payload.get("comment") or payload.get("review", {})
+    # comment = payload.get("comment") or payload.get("review", {})
     # is_review_request, _pr_url_override = parse_github_review_command(comment.get("body") or "")
 
     # email = GITHUB_USER_EMAIL_MAP.get(github_login, "")
@@ -3029,9 +3053,7 @@ async def process_github_pr_comment(payload: dict[str, Any], event_type: str) ->
         try:
             await persist_encrypted_github_token(thread_id, github_token, expires_at=expires_at)
         except Exception:
-            logger.warning(
-                "Could not persist bot token for PR review request thread %s", thread_id
-            )
+            logger.warning("Could not persist bot token for PR review request thread %s", thread_id)
 
     if not github_token:
         logger.warning("No GitHub token for thread %s, skipping", thread_id)
@@ -3081,7 +3103,44 @@ async def process_github_pr_comment(payload: dict[str, Any], event_type: str) ->
         logger.info("No comments found since last @dev-agent tag for PR %s", pr_number)
         return
 
-    prompt = build_pr_prompt(comments, pr_url, repo_config=repo_config)
+    # Fetch threads block for re-trigger context (resolve-always + dedup guard)
+    threads_block = None
+    try:
+        from agent.reviewer_publish import fetch_pr_review_threads as _fetch_threads
+
+        threads = await _fetch_threads(
+            owner=repo_config.get("owner", ""),
+            repo=repo_config.get("name", ""),
+            pr_number=pr_number,
+            token=github_token,
+        )
+        if threads:
+            # Use reviewer formatting if available, else minimal inline
+            try:
+                from agent.reviewer import _format_pr_review_threads as _fmt
+
+                threads_block = _fmt(threads)
+            except Exception:
+                # Minimal fallback: render open threads with id, path, body snippet
+                lines = ["<pr_review_threads>"]
+                for th in threads[:20]:
+                    path = th.get("path") or "unknown"
+                    status = "resolved" if th.get("is_resolved") else "open"
+                    lines.append(f'  <thread location="{path}" status="{status}">')
+                    for c in th.get("comments", [])[:5]:
+                        author = c.get("author", "unknown")
+                        body = (c.get("body") or "")[:500]
+                        lines.append(f'    <comment author="{author}">{body}</comment>')
+                    lines.append("  </thread>")
+                lines.append("</pr_review_threads>")
+                threads_block = "\n".join(lines)
+    except Exception:
+        import logging as _lg
+
+        _lg.getLogger(__name__).warning(
+            "Failed to fetch threads block for PR prompt", exc_info=True
+        )
+    prompt = build_pr_prompt(comments, pr_url, repo_config=repo_config, threads_block=threads_block)
     await _trigger_or_queue_run(
         thread_id,
         prompt,
@@ -3459,7 +3518,6 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
     issue = payload.get("issue", {})
     pull_request = payload.get("pull_request", {})
     pr_author = (pull_request.get("user") or {}).get("login", "")
-    is_pull_request_comment = bool(event_type == "issue_comment" and issue.get("pull_request"))
     is_issue_comment = bool(event_type == "issue_comment" and not issue.get("pull_request"))
     is_issue_event = event_type == "issues"
     is_pull_request_event = event_type == "pull_request"
@@ -3563,7 +3621,18 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
             return gate_rejection
 
         logger.info("Accepted GitHub issue webhook, scheduling background task")
-        background_tasks.add_task(process_github_issue, payload, event_type)
+
+        async def _safe_process_github_issue(p: dict[str, Any], et: str) -> None:
+            issue_id = str(p.get("issue", {}).get("id", ""))
+            thread_id = generate_thread_id_from_issue(f"github:{issue_id}") if issue_id else ""
+            try:
+                await process_github_issue(p, et)
+            except Exception:
+                logger.exception("process_github_issue failed for %s", issue_id)
+                await signal_runtime_completion(thread_id, "failed")
+                raise
+
+        background_tasks.add_task(_safe_process_github_issue, payload, event_type)
         return {"status": "accepted", "message": "Processing GitHub issue event"}
 
     action = payload.get("action", "")
@@ -3575,8 +3644,7 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
         logger.debug("Ignoring unsupported GitHub %s action: %s", event_type, action)
         return {"status": "ignored", "reason": f"Unsupported GitHub {event_type} action: {action}"}
 
-    comment = payload.get("comment") or payload.get("review", {})
-    comment_body = (comment.get("body") or "") if comment else ""
+    # comment = payload.get("comment") or payload.get("review", {})
     if (
         event_type == "pull_request_review_comment"
         and _review_comment_reply_parent_id(payload) is not None
@@ -3630,7 +3698,18 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks) ->
         return {"status": "accepted", "message": f"Processing {event_type} event"}
 
     if is_issue_comment:
-        background_tasks.add_task(process_github_issue, payload, event_type)
+
+        async def _safe_process_github_issue_comment(p: dict[str, Any], et: str) -> None:
+            issue_id = str(p.get("issue", {}).get("id", ""))
+            thread_id = generate_thread_id_from_issue(f"github:{issue_id}") if issue_id else ""
+            try:
+                await process_github_issue(p, et)
+            except Exception:
+                logger.exception("process_github_issue failed for %s", issue_id)
+                await signal_runtime_completion(thread_id, "failed")
+                raise
+
+        background_tasks.add_task(_safe_process_github_issue_comment, payload, event_type)
         return {"status": "accepted", "message": "Processing GitHub issue comment event"}
 
     logger.info("Ignoring unsupported GitHub payload shape for event=%s", event_type)

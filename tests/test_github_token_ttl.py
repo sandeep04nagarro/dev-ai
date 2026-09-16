@@ -225,12 +225,17 @@ def test_process_github_pr_comment_invalidates_and_reauths_on_401(
     async def fake_invalidate(thread_id: str) -> None:
         invalidated["calls"] += 1
 
-    tokens = iter(["stale-token", "fresh-token"])
+    async def fake_app_token() -> tuple[str, Any]:
+        # process_github_pr_comment now starts from the GitHub App installation
+        # token; the per-thread resolve only runs on the 401 retry path.
+        return "stale-token", None
 
-    async def fake_get_or_resolve(thread_id: str, email: str) -> str | None:
-        token = next(tokens)
-        resolves.append(token)
-        return token
+    async def fake_persist(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    async def fake_get_or_resolve(thread_id: str, config: Any) -> str | None:
+        resolves.append("fresh-token")
+        return "fresh-token"
 
     async def fake_react(
         repo_config: dict[str, str],
@@ -251,7 +256,11 @@ def test_process_github_pr_comment_invalidates_and_reauths_on_401(
     ) -> list[dict[str, Any]]:
         fetch_calls.append(token)
         return [
-            {"body": "@dev-agent please look", "author": "octo", "created_at": "2026-01-01T00:00:00Z"}
+            {
+                "body": "@dev-agent please look",
+                "author": "octo",
+                "created_at": "2026-01-01T00:00:00Z",
+            }
         ]
 
     async def fake_extract_pr_context(
@@ -271,6 +280,8 @@ def test_process_github_pr_comment_invalidates_and_reauths_on_401(
         return None
 
     monkeypatch.setattr(webapp, "extract_pr_context", fake_extract_pr_context)
+    monkeypatch.setattr(webapp, "get_github_app_installation_token_with_expiry", fake_app_token)
+    monkeypatch.setattr(webapp, "persist_encrypted_github_token", fake_persist)
     monkeypatch.setattr(webapp, "_get_or_resolve_thread_github_token", fake_get_or_resolve)
     monkeypatch.setattr(webapp, "invalidate_cached_github_token", fake_invalidate)
     monkeypatch.setattr(webapp, "react_to_github_comment", fake_react)
@@ -286,7 +297,7 @@ def test_process_github_pr_comment_invalidates_and_reauths_on_401(
     )
 
     assert invalidated["calls"] == 1
-    assert resolves == ["stale-token", "fresh-token"]
+    assert resolves == ["fresh-token"]
     assert react_calls == ["stale-token", "fresh-token"]
     assert fetch_calls == ["fresh-token"]
 

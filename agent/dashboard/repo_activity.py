@@ -235,7 +235,9 @@ def _pr_state(pull: dict[str, Any]) -> str:
     return "merged" if pull.get("merged_at") else "closed"
 
 
-def _summarize_pulls(pulls: list[dict[str, Any]]) -> tuple[dict[str, int], dict[str, int], list[dict[str, Any]]]:
+def _summarize_pulls(
+    pulls: list[dict[str, Any]],
+) -> tuple[dict[str, int], dict[str, int], list[dict[str, Any]]]:
     overall, agent = _empty_counts(), _empty_counts()
     agent_pulls: list[dict[str, Any]] = []
 
@@ -359,9 +361,7 @@ def _assess(stats: dict[str, Any], state: str, draft: bool) -> dict[str, Any]:
     }
 
 
-async def get_pull_request_detail(
-    login: str, owner: str, repo: str, number: int
-) -> dict[str, Any]:
+async def get_pull_request_detail(login: str, owner: str, repo: str, number: int) -> dict[str, Any]:
     """One PR's stats plus a heuristic assessment of the agent's work on it."""
     del login
 

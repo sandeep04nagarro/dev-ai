@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from agent.utils import repo as repo_utils
 from agent.utils.repo import extract_repo_from_text
 
 
@@ -17,11 +18,13 @@ class TestExtractRepoFromText:
         result = extract_repo_from_text("please use repo langchain-ai/langchainjs")
         assert result == {"owner": "langchain-ai", "name": "langchainjs"}
 
-    def test_repo_colon_name_only_uses_default_owner(self) -> None:
+    def test_repo_colon_name_only_uses_default_owner(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(repo_utils, "_DEFAULT_REPO_OWNER", "langchain-ai")
         result = extract_repo_from_text("fix bug in repo:langchainplus")
         assert result == {"owner": "langchain-ai", "name": "langchainplus"}
 
-    def test_repo_space_name_only_uses_default_owner(self) -> None:
+    def test_repo_space_name_only_uses_default_owner(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(repo_utils, "_DEFAULT_REPO_OWNER", "langchain-ai")
         result = extract_repo_from_text("fix bug in repo open-swe")
         assert result == {"owner": "langchain-ai", "name": "open-swe"}
 
@@ -54,6 +57,10 @@ class TestExtractRepoFromText:
         assert result == {"owner": "my-org", "name": "my-repo"}
 
 
+@pytest.mark.skip(
+    reason="Linear integration is commented out repo-wide (agent.webapp.linear_webhook no longer "
+    "exists); re-enable these tests with the feature."
+)
 class TestLinearWebhookRepoOverride:
     """Test that the Linear webhook handler checks comment body for repo config first."""
 

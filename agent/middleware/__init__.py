@@ -16,12 +16,13 @@ from agent.middleware.multi_repo_clone import MultiRepoCloneMiddleware
 from agent.middleware.notify_step_limit import notify_step_limit_reached
 from agent.middleware.recon_fallback import ReconFallbackMiddleware
 from agent.middleware.refresh_slack_status import SlackAssistantStatusMiddleware
+from agent.middleware.runtime_completion import runtime_completion_middleware
 from agent.middleware.sandbox_circuit_breaker import SandboxCircuitBreakerMiddleware
 from agent.middleware.sanitize_thinking_blocks import SanitizeThinkingBlocksMiddleware
 from agent.middleware.sanitize_tool_inputs import SanitizeToolInputsMiddleware
 from agent.middleware.ticket_token_usage import TicketTokenUsageMiddleware
 from agent.middleware.tool_error_handler import ToolErrorMiddleware
-from agent.utils.config import SandboxConfig, MiddlewareConfig
+from agent.utils.config import MiddlewareConfig, SandboxConfig
 
 MODEL_CALL_RECURSION_LIMIT = MiddlewareConfig.MODEL_CALL_RECURSION_LIMIT
 RECON_MODEL_CALL_RECURSION_LIMIT = MiddlewareConfig.RECON_MODEL_CALL_RECURSION_LIMIT
@@ -55,6 +56,7 @@ __all__ = [
     "docker_cleanup_middleware",
     "ensure_no_empty_msg",
     "notify_step_limit_reached",
+    "runtime_completion_middleware",
     "MultiRepoCloneMiddleware",
     "JiraPlanSyncMiddleware",
 ]
@@ -91,6 +93,7 @@ def build_server_middleware_list(
         SandboxCircuitBreakerMiddleware(),
         *fallback_middleware,
         SanitizeThinkingBlocksMiddleware(),
+        runtime_completion_middleware,
     ]
     if SandboxConfig.TYPE == "docker":
         from .docker_cleanup import docker_cleanup_middleware

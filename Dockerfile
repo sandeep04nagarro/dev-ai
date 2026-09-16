@@ -80,7 +80,7 @@ COPY . /workspace
 
 EXPOSE 2024
 
-CMD ["uv", "run", "langgraph", "dev", "--no-reload", "--host", "127.0.0.1"]
+CMD ["uv", "run", "langgraph", "dev", "--no-reload", "--host", "0.0.0.0"]
 
 RUN echo "=== Installed versions ===" \
     && python --version \

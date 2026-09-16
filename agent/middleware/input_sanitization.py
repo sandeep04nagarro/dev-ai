@@ -12,6 +12,11 @@ the agent to leak secrets.
 helpers in :mod:`agent.security.input_sanitizer`.  The transformation is
 idempotent, so applying it on every model call is safe and cheap.
 
+The middleware fails closed: when a harmful pattern fires, the message is
+sanitised in place and the run is aborted with a :class:`RuntimeError` rather
+than forwarded to the model.  On the async path a Jira comment is posted first
+(when the thread is Jira-backed) so the reporter learns why the run stopped.
+
 Only the Python standard library is used -- no third-party security package.
 """
 
@@ -54,8 +59,7 @@ def _sanitize_messages(messages: list[BaseMessage]) -> list[str]:
         message.content = new_content
         all_redactions.extend(redactions)
         logger.warning(
-            "InputSanitizationMiddleware: redacted %s from a HumanMessage "
-            "(preview=%.80r).",
+            "InputSanitizationMiddleware: redacted %s from a HumanMessage (preview=%.80r).",
             ", ".join(redactions),
             original_content if isinstance(original_content, str) else str(original_content)[:80],
         )
@@ -87,7 +91,9 @@ class InputSanitizationMiddleware(AgentMiddleware):
     ) -> ModelResponse:
         redactions = self._sanitize(request)
         if redactions:
-            raise RuntimeError(f"Execution stopped due to harmful patterns: {', '.join(set(redactions))}")
+            raise RuntimeError(
+                f"Execution stopped due to harmful patterns: {', '.join(set(redactions))}"
+            )
         return handler(request)
 
     async def awrap_model_call(
@@ -103,15 +109,23 @@ class InputSanitizationMiddleware(AgentMiddleware):
                 if thread_id:
                     client = langgraph_client()
                     thread = await client.threads.get(thread_id)
-                    metadata = thread.get("metadata", {}) if isinstance(thread, dict) else getattr(thread, "metadata", {})
+                    metadata = (
+                        thread.get("metadata", {})
+                        if isinstance(thread, dict)
+                        else getattr(thread, "metadata", {})
+                    )
                     jira_issue_key = metadata.get("jira_issue_key")
                     if jira_issue_key:
                         issues = ", ".join(set(redactions))
                         comment = f"Input sanitization detected harmful patterns: {issues}. Please handle them and then give the task again."
                         await post_jira_comment(jira_issue_key, comment)
-                        logger.info("Posted Jira comment about harmful patterns to %s", jira_issue_key)
-            except Exception as e:
+                        logger.info(
+                            "Posted Jira comment about harmful patterns to %s", jira_issue_key
+                        )
+            except Exception:
                 logger.exception("Failed to post Jira comment for sanitization failure")
-            raise RuntimeError(f"Execution stopped due to harmful patterns: {', '.join(set(redactions))}")
-            
+            raise RuntimeError(
+                f"Execution stopped due to harmful patterns: {', '.join(set(redactions))}"
+            )
+
         return await handler(request)

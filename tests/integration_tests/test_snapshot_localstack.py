@@ -12,7 +12,6 @@ Set env vars:
 Run with: ``pytest -vvs tests/integration_tests/test_snapshot_localstack.py -m integration``
 """
 
-import os
 import subprocess
 
 import docker
@@ -21,17 +20,16 @@ import pytest
 from agent.integrations.docker import DockerSandbox, _create_container, create_docker_sandbox
 from agent.integrations.localstack_registry import LocalStackRegistry
 from agent.utils.config import DockerConfig
-from agent.utils.snapshot_state import PERSISTED, set_snapshot_state
-
 from agent.utils.secrets import SecretsManager
+from agent.utils.snapshot_state import PERSISTED, set_snapshot_state
 
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.skipif(
         # not os.environ.get("SANDBOX_SNAPSHOT_ENABLED", "").lower()
         # in ("1", "true", "on", "yes"),
-        not SecretsManager.get("SANDBOX_SNAPSHOT_ENABLED", "").lower()
-        in ("1", "true", "on", "yes"),
+        SecretsManager.get("SANDBOX_SNAPSHOT_ENABLED", "").lower()
+        not in ("1", "true", "on", "yes"),
         reason="SANDBOX_SNAPSHOT_ENABLED must be set",
     ),
     pytest.mark.skipif(
@@ -62,9 +60,13 @@ def localstack_repo():
     registry_uri = SecretsManager.get("SANDBOX_REGISTRY_URI", "http://localhost:4566")
     result = subprocess.run(
         [
-            "aws", "--endpoint-url", registry_uri,
-            "ecr", "create-repository",
-            "--repository-name", f"sandbox-{THREAD_ID}",
+            "aws",
+            "--endpoint-url",
+            registry_uri,
+            "ecr",
+            "create-repository",
+            "--repository-name",
+            f"sandbox-{THREAD_ID}",
         ],
         capture_output=True,
         text=True,
@@ -74,9 +76,13 @@ def localstack_repo():
     yield
     subprocess.run(
         [
-            "aws", "--endpoint-url", registry_uri,
-            "ecr", "delete-repository",
-            "--repository-name", f"sandbox-{THREAD_ID}",
+            "aws",
+            "--endpoint-url",
+            registry_uri,
+            "ecr",
+            "delete-repository",
+            "--repository-name",
+            f"sandbox-{THREAD_ID}",
             "--force",
         ],
         capture_output=True,
@@ -102,7 +108,9 @@ def test_full_snapshot_cycle(docker_client, localstack_repo):
     sandbox = create_docker_sandbox(THREAD_ID)
     assert isinstance(sandbox, DockerSandbox)
 
-    result = sandbox.execute("echo 'hello snapshot' > /workspace/data.txt && cat /workspace/data.txt")
+    result = sandbox.execute(
+        "echo 'hello snapshot' > /workspace/data.txt && cat /workspace/data.txt"
+    )
     assert result.exit_code == 0
     assert "hello snapshot" in result.output
 

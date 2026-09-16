@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import hmac
 import logging
+import os
 import re
 from typing import Any
 
@@ -35,8 +36,8 @@ __all__ = [
     "verify_github_signature",
 ]
 
-DEV_AGENT_TAGS = ("@dev-agent",)
-_DEV_AGENT_MENTION_RE = re.compile(r"(?i)@(?:dev-agent)\b")
+DEV_AGENT_TAGS = (os.environ.get("WORKER_TAG", "@dev-agent").lower(),)
+_DEV_AGENT_MENTION_RE = re.compile(r"(?i)@(?:dev-agent)(?:-\w+)?\b")
 _REVIEW_COMMAND_RE = re.compile(r"(?i)\Areview(?:\s+(https?://\S+))?\s*\Z")
 UNTRUSTED_GITHUB_COMMENT_OPEN_TAG = "<dangerous-external-untrusted-users-comment>"
 UNTRUSTED_GITHUB_COMMENT_CLOSE_TAG = "</dangerous-external-untrusted-users-comment>"
@@ -89,12 +90,11 @@ def parse_github_review_command(body: str) -> tuple[bool, str | None]:
     """
     if not body:
         return False, None
-    # stripped = _DEV_AGENT_MENTION_RE.sub("", body).strip()
-    # match = _REVIEW_COMMAND_RE.match(stripped)
-    # if not match:
-    #     return False, None
-    # return True, match.group(1) or None
-    return True, None
+    stripped = _DEV_AGENT_MENTION_RE.sub("", body).strip()
+    match = _REVIEW_COMMAND_RE.match(stripped)
+    if not match:
+        return False, None
+    return True, match.group(1) or None
 
 
 def sanitize_github_comment_body(body: str) -> str:
@@ -437,6 +437,7 @@ def build_pr_prompt(
     comments: list[dict[str, Any]],
     pr_url: str,
     repo_config: dict[str, str] | None = None,
+    threads_block: str | None = None,
 ) -> str:
     """Format PR comments into a human message for the agent."""
     lines: list[str] = []
@@ -447,11 +448,19 @@ def build_pr_prompt(
             path = c.get("path", "")
             line = c.get("line", "")
             loc = f" (file: `{path}`, line: {line})" if path else ""
-            lines.append(f"\n**{author}**{loc}:\n{body}\n")
+            comment_id = c.get("comment_id")
+            id_tag = (
+                f" <!-- github_review_comment_id: {comment_id} -->"
+                if isinstance(comment_id, int)
+                else ""
+            )
+            lines.append(f"\n**{author}**{loc}{id_tag}:\n{body}\n")
         else:
             lines.append(f"\n**{author}**:\n{body}\n")
 
     comments_text = "".join(lines)
+    if threads_block:
+        comments_text += f"\n\n## Open/Resolved PR Review Threads (full context for re-trigger)\n{threads_block}\n"
     repo_line = ""
     if repo_config:
         repo_line = f"## Repository: {repo_config.get('owner')}/{repo_config.get('name')}\n\n"

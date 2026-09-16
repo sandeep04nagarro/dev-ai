@@ -27,8 +27,10 @@ async def test_snapshot_and_cleanup_push_succeeds():
     sandbox = DockerSandbox(_FakeContainer("ctr-1"))
 
     with (
-        patch("agent.utils.snapshot.create_registry") as mock_create_registry,
-        patch("agent.utils.snapshot_state.store_snapshot_status", new_callable=AsyncMock) as mock_store,
+        patch("agent.middleware.docker_cleanup.create_registry") as mock_create_registry,
+        patch(
+            "agent.middleware.docker_cleanup.store_snapshot_status", new_callable=AsyncMock
+        ) as mock_store,
         patch("agent.middleware.docker_cleanup.docker.from_env") as mock_from_env,
     ):
         mock_registry = MagicMock()
@@ -36,7 +38,7 @@ async def test_snapshot_and_cleanup_push_succeeds():
         mock_create_registry.return_value = mock_registry
 
         mock_client = MagicMock()
-        mock_client.images.commit.return_value = MagicMock()
+        mock_client.api.commit.return_value = MagicMock()
         mock_from_env.return_value = mock_client
 
         await _snapshot_and_cleanup(sandbox, "thread-1", {"langgraph_run_id": "run-abc"})
@@ -51,8 +53,10 @@ async def test_snapshot_and_cleanup_push_fails():
     sandbox = DockerSandbox(_FakeContainer("ctr-1"))
 
     with (
-        patch("agent.utils.snapshot.create_registry") as mock_create_registry,
-        patch("agent.utils.snapshot_state.store_snapshot_status", new_callable=AsyncMock) as mock_store,
+        patch("agent.middleware.docker_cleanup.create_registry") as mock_create_registry,
+        patch(
+            "agent.middleware.docker_cleanup.store_snapshot_status", new_callable=AsyncMock
+        ) as mock_store,
         patch("agent.middleware.docker_cleanup.docker.from_env") as mock_from_env,
     ):
         mock_registry = MagicMock()
@@ -60,7 +64,7 @@ async def test_snapshot_and_cleanup_push_fails():
         mock_create_registry.return_value = mock_registry
 
         mock_client = MagicMock()
-        mock_client.images.commit.return_value = MagicMock()
+        mock_client.api.commit.return_value = MagicMock()
         mock_from_env.return_value = mock_client
 
         await _snapshot_and_cleanup(sandbox, "thread-1", {"langgraph_run_id": "run-abc"})
@@ -74,17 +78,17 @@ async def test_snapshot_and_cleanup_commit_fails():
     sandbox = DockerSandbox(_FakeContainer("ctr-1"))
 
     with (
-        patch("agent.utils.snapshot.create_registry") as mock_create_registry,
-        patch("agent.utils.snapshot_state.store_snapshot_status", new_callable=AsyncMock) as mock_store,
+        patch("agent.middleware.docker_cleanup.create_registry") as mock_create_registry,
+        patch(
+            "agent.middleware.docker_cleanup.store_snapshot_status", new_callable=AsyncMock
+        ) as mock_store,
         patch("agent.middleware.docker_cleanup.docker.from_env") as mock_from_env,
     ):
         mock_registry = MagicMock()
         mock_create_registry.return_value = mock_registry
 
         mock_client = MagicMock()
-        mock_client.images.commit.side_effect = __import__("docker").errors.APIError(
-            "commit failed"
-        )
+        mock_client.api.commit.side_effect = __import__("docker").errors.APIError("commit failed")
         mock_from_env.return_value = mock_client
 
         await _snapshot_and_cleanup(sandbox, "thread-1", {"langgraph_run_id": "run-abc"})
@@ -98,7 +102,7 @@ async def test_snapshot_and_cleanup_no_registry():
     sandbox = DockerSandbox(_FakeContainer("ctr-1"))
 
     with (
-        patch("agent.utils.snapshot.create_registry", return_value=None),
+        patch("agent.middleware.docker_cleanup.create_registry", return_value=None),
     ):
         await _snapshot_and_cleanup(sandbox, "thread-1", {"langgraph_run_id": "run-abc"})
 
@@ -110,8 +114,8 @@ async def test_snapshot_and_cleanup_no_run_id_generates_uuid():
     sandbox = DockerSandbox(_FakeContainer("ctr-1"))
 
     with (
-        patch("agent.utils.snapshot.create_registry") as mock_create_registry,
-        patch("agent.utils.snapshot_state.store_snapshot_status", new_callable=AsyncMock),
+        patch("agent.middleware.docker_cleanup.create_registry") as mock_create_registry,
+        patch("agent.middleware.docker_cleanup.store_snapshot_status", new_callable=AsyncMock),
         patch("agent.middleware.docker_cleanup.docker.from_env") as mock_from_env,
     ):
         mock_registry = MagicMock()
@@ -119,7 +123,7 @@ async def test_snapshot_and_cleanup_no_run_id_generates_uuid():
         mock_create_registry.return_value = mock_registry
 
         mock_client = MagicMock()
-        mock_client.images.commit.return_value = MagicMock()
+        mock_client.api.commit.return_value = MagicMock()
         mock_from_env.return_value = mock_client
 
         await _snapshot_and_cleanup(sandbox, "thread-1", {})
