@@ -72,6 +72,7 @@ from .utils.auth import (
     resolve_github_token,
 )
 from .utils.authorship import OPEN_SWE_BOT_NAME
+from .utils.completion import signal_runtime_completion
 
 # from .utils.comments import get_recent_comments
 from .utils.github_app import (
@@ -121,7 +122,11 @@ from .utils.slack_feedback import (
     process_slack_reaction_added,
     process_slack_reaction_removed,
 )
-from .utils.thread_ops import is_thread_active, queue_message_for_thread
+from .utils.thread_ops import (
+    is_thread_active,
+    queue_message_for_thread,
+    watch_run_and_signal_failure,
+)
 
 SecretsManager.load()
 
@@ -1039,6 +1044,7 @@ async def process_slack_mention(event_data: dict[str, Any], repo_config: dict[st
         _run_id_for_logging(run),
         thread_id,
     )
+    spawn_run_watcher(run, thread_id, source="slack")
     run_id = run.get("run_id")
     if is_first_mention:
         # trace_message_ts = await post_slack_trace_reply(channel_id, thread_ts, thread_id)
@@ -1850,31 +1856,56 @@ def build_recon_jira_issue_prompt(
     )
 
 
-async def signal_runtime_completion(thread_id: str, status: str) -> None:
-    """POST {thread_id, status} to the runtime wrapper. Best-effort, never raises."""
-    base_url = SecretsManager.get("RUNTIME_WRAPPER_URL", "")
-    if not base_url or not thread_id:
+# `signal_runtime_completion` is imported from `agent.utils.completion`
+# (single implementation shared with the run watcher and the after-agent hook).
+# It remains accessible as `webapp.signal_runtime_completion` for back-compat
+# and test patching.
+
+_UNKNOWN_RUN_ID = "<unknown>"
+
+
+def run_id_from_create_response(run: Any) -> str | None:
+    """Extract a run id from SDK `runs.create` response shapes."""
+    run_id = run.get("run_id") if isinstance(run, dict) else getattr(run, "run_id", None)
+    if isinstance(run_id, str) and run_id and run_id != _UNKNOWN_RUN_ID:
+        return run_id
+    return None
+
+
+def spawn_run_watcher(run: Any, thread_id: str, *, source: str = "") -> None:
+    """Fire-and-forget `watch_run_and_signal_failure` for a `runs.create` response.
+
+    Never raises. Callers must not `await` this — `process_*` background tasks
+    must return promptly after `runs.create`.
+    """
+    try:
+        run_id = run_id_from_create_response(run)
+    except Exception:  # noqa: BLE001 — defensive: unknown SDK shape
+        logger.warning("Run watcher: could not parse run_id for thread %s", thread_id)
         return
-    url = base_url.rstrip("/") + "/internal/completions"
-    payload = {"thread_id": thread_id, "status": status}
-    for attempt in range(1, 4):
+    if not thread_id or not run_id:
+        logger.debug(
+            "Run watcher: no run_id for thread %s (source=%s) — skipping",
+            thread_id,
+            source,
+        )
+        return
+    try:
+        task = asyncio.create_task(watch_run_and_signal_failure(thread_id, run_id, source=source))
+    except RuntimeError:
+        logger.warning("Run watcher: no running loop for thread %s — skipping", thread_id)
+        return
+
+    def _done(t: asyncio.Task) -> None:
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(url, json=payload, timeout=10.0)
-            if response.status_code < 400:
-                logger.info(
-                    "Runtime completion signalled for thread %s (status=%s, attempt %d)",
-                    thread_id,
-                    status,
-                    attempt,
-                )
-                return
-        except Exception as exc:
-            logger.warning(
-                "Runtime completion attempt %d for %s failed: %s", attempt, thread_id, exc
-            )
-        await asyncio.sleep(1.0)
-    logger.error("Failed to signal runtime completion for thread %s after 3 attempts", thread_id)
+            t.result()
+        except asyncio.CancelledError:
+            pass
+        except Exception:  # noqa: BLE001 — watcher already logs; avoid unretrieved warnings
+            logger.exception("Run watcher task failed for thread %s", thread_id)
+
+    task.add_done_callback(_done)
+    logger.info("Run watcher spawned for thread %s run %s (source=%s)", thread_id, run_id, source)
 
 
 async def process_jira_issue(
@@ -2101,13 +2132,14 @@ async def process_jira_issue(
         await queue_message_for_thread(thread_id, prompt)
     else:
         logger.info("Creating LangGraph run for thread %s from Jira", thread_id)
-        await langgraph_client.runs.create(
+        run = await langgraph_client.runs.create(
             thread_id,
             "agent",
             input={"messages": [{"role": "user", "content": prompt}]},
             config={"configurable": configurable, "metadata": run_metadata},
             if_not_exists="create",
         )
+        spawn_run_watcher(run, thread_id, source="jira")
         # await post_jira_trace_comment(issue_key or issue_id, thread_id)
 
     try:
@@ -2143,7 +2175,7 @@ async def _trigger_or_queue_run(
         "langfuse_session_id": thread_id,
         "langfuse_user_id": github_login or "unknown",
     }
-    await langgraph_client.runs.create(
+    run = await langgraph_client.runs.create(
         thread_id,
         "agent",
         input={"messages": [{"role": "user", "content": prompt}]},
@@ -2159,6 +2191,7 @@ async def _trigger_or_queue_run(
         },
         if_not_exists="create",
     )
+    spawn_run_watcher(run, thread_id, source="github-pr-comment")
     logger.info("LangGraph run created for thread %s from GitHub PR comment", thread_id)
 
 
@@ -3478,13 +3511,14 @@ async def process_github_issue(payload: dict[str, Any], event_type: str) -> None
     logger.info("Creating LangGraph run for thread %s from GitHub issue", thread_id)
     langgraph_client = get_client(url=LANGGRAPH_URL)
 
-    await langgraph_client.runs.create(
+    run = await langgraph_client.runs.create(
         thread_id,
         "agent",
         input={"messages": [{"role": "user", "content": prompt}]},
         config=config,
         if_not_exists="create",
     )
+    spawn_run_watcher(run, thread_id, source="github-issue")
     logger.info("LangGraph run created for thread %s from GitHub issue", thread_id)
 
 

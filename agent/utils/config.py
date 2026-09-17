@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from agent.utils.secrets import SecretsManager
+
 
 class LLMConfig:
     """LLM / Model configuration."""
@@ -42,7 +44,13 @@ class JiraConfig:
 
     BOT_NAME: str = "Open SWE Agent"
     DOMAIN: str = ""
-    PROJECT_TO_REPO: str = '{"JIRA_SPACE_ID":{"owner":"repo_owner_name","name":"repo_name"}}'
+    _DEFAULT_PROJECT_TO_REPO: str = (
+        '{"JIRA_SPACE_ID":{"owner":"repo_owner_name","name":"repo_name"}}'
+    )
+    PROJECT_TO_REPO: str = (
+        SecretsManager.get("JIRA_PROJECT_TO_REPO", _DEFAULT_PROJECT_TO_REPO)
+        or _DEFAULT_PROJECT_TO_REPO
+    )
 
 
 class SlackConfig:
