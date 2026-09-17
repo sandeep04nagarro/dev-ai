@@ -8,22 +8,16 @@ container down. No-op unless ``RUNTIME_WRAPPER_URL`` is configured.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 
-import httpx
 from langchain.agents.middleware import AgentState, after_agent
 from langgraph.config import get_config
 from langgraph.runtime import Runtime
 
-from agent.utils.secrets import SecretsManager
+from agent.utils.completion import signal_runtime_completion
 
 logger = logging.getLogger(__name__)
-
-ATTEMPTS = 3
-RETRY_SLEEP_SECONDS = 1.0
-POST_TIMEOUT_SECONDS = 10.0
 
 
 @after_agent
@@ -41,39 +35,8 @@ async def runtime_completion_middleware(
     if not isinstance(thread_id, str) or not thread_id:
         return None
 
-    base_url = SecretsManager.get("RUNTIME_WRAPPER_URL", "")
-    if not base_url:
-        logger.debug("RUNTIME_WRAPPER_URL not set — skipping runtime completion signal")
-        return None
-
-    url = base_url.rstrip("/") + "/internal/completions"
-    payload = {"thread_id": thread_id, "status": "completed"}
-
-    for attempt in range(1, ATTEMPTS + 1):
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(url, json=payload, timeout=POST_TIMEOUT_SECONDS)
-            if response.status_code < 400:  # noqa: PLR2004
-                logger.info(
-                    "Runtime completion signalled for thread %s (attempt %d, %s)",
-                    thread_id,
-                    attempt,
-                    response.status_code,
-                )
-                return None
-            logger.warning(
-                "Runtime completion attempt %d for %s got %s",
-                attempt,
-                thread_id,
-                response.status_code,
-            )
-        except Exception as exc:  # noqa: BLE001 — best-effort signal only
-            logger.warning(
-                "Runtime completion attempt %d for %s failed: %s", attempt, thread_id, exc
-            )
-        await asyncio.sleep(RETRY_SLEEP_SECONDS)
-
-    logger.error(
-        "Failed to signal runtime completion for thread %s after %d attempts", thread_id, ATTEMPTS
-    )
+    try:
+        await signal_runtime_completion(thread_id, "completed")
+    except Exception:  # noqa: BLE001 — completion signal must never fail the run
+        logger.exception("Runtime completion signal failed for thread %s", thread_id)
     return None
