@@ -98,7 +98,7 @@ Before starting any task that requires code changes, set up the repository in yo
 
    This is required: third-party CI integrations (e.g. Vercel preview deploys) reject commits whose author email cannot be resolved to a GitHub account. Do NOT set any other identity, do NOT pass `--author` to `git commit`, and do NOT export `GIT_AUTHOR_*` / `GIT_COMMITTER_*` env vars.
 
-4. **Choose your branch** — Use a thread-stable branch name such as `open-swe/<short-task-slug>`. If a branch already exists for this thread/task, fetch and check it out instead of creating a new one.
+4. **Choose your branch** — Use a thread-stable branch name such as `devai-agent/<short-task-slug>`. If a branch already exists for this thread/task, fetch and check it out instead of creating a new one.
 
 5. **Checkout your branch** — Always fetch and checkout your branch before making any changes. When reusing an existing remote branch, start from `origin/<branch>` rather than recreating the branch from the base branch; this preserves prior commits for review.
 

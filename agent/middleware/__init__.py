@@ -2,6 +2,7 @@ from typing import Any
 
 from langchain.agents.middleware import ModelCallLimitMiddleware
 
+from agent.middleware.branch_enforcement import BranchEnforcementMiddleware
 from agent.middleware.callback_metadata_logger import MetadataLoggerHandler
 from agent.middleware.check_message_queue import check_message_queue_before_model
 from agent.middleware.command_safety import CommandSafetyMiddleware
@@ -14,6 +15,7 @@ from agent.middleware.jira_plan_sync import JiraPlanSyncMiddleware
 from agent.middleware.model_fallback import ModelFallbackMiddleware
 from agent.middleware.multi_repo_clone import MultiRepoCloneMiddleware
 from agent.middleware.notify_step_limit import notify_step_limit_reached
+from agent.middleware.pr_title_enforcement import PRTitleEnforcementMiddleware
 from agent.middleware.recon_fallback import ReconFallbackMiddleware
 from agent.middleware.refresh_slack_status import SlackAssistantStatusMiddleware
 from agent.middleware.runtime_completion import runtime_completion_middleware
@@ -75,6 +77,8 @@ def build_server_middleware_list(
         # reach the Docker sandbox. Returns an error ToolMessage so the LLM
         # can self-correct; DockerSandbox.execute() is a second backstop.
         CommandSafetyMiddleware(),
+        BranchEnforcementMiddleware(),
+        PRTitleEnforcementMiddleware(),
         # --- Existing tool/state hygiene ------------------------------------
         SanitizeToolInputsMiddleware(),
         MultiRepoCloneMiddleware(),
