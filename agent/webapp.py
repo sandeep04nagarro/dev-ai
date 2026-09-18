@@ -1515,7 +1515,8 @@ async def jira_webhook(request: Request, background_tasks: BackgroundTasks) -> d
     try:
         client = get_client(url=LANGGRAPH_URL)
         thread = await client.threads.get(thread_id)
-        metadata = thread.metadata or {}
+        metadata = thread.get("metadata") if isinstance(thread, dict) else None
+        metadata = metadata if isinstance(metadata, dict) else {}
         seeded = metadata.get("selected_repos") or metadata.get("repos") or []
         if seeded:
             selected_repos = [
