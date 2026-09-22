@@ -206,7 +206,7 @@ SLACK_REPO_NAME = RepoConfig.SLACK_NAME or RepoConfig.DEFAULT_NAME
 # REVIEWER_ENABLED = os.environ.get("REVIEWER_ENABLED", "")
 LANGGRAPH_URL = SecretsManager.get("LANGGRAPH_URL", "http://localhost:2024")
 REVIEWER_ENABLED = SecretsManager.get("REVIEWER_ENABLED", "")
-GITHUB_APP_NAME = SecretsManager.get("GITHUB_APP_NAME","").strip()
+GITHUB_APP_NAME = SecretsManager.get("GITHUB_APP_NAME", "").strip()
 
 _AGENT_VERSION_METADATA: dict[str, str] = (
     {"AGENT_VERSION": BuildConfig.LANGCHAIN_REVISION_ID}
