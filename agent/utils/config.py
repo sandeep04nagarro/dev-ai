@@ -63,7 +63,7 @@ class RepoConfig:
     ALLOWED_GITHUB_REPOS: str = ""
     PUBLIC_ORG_GATE: str = ""
     CONFIGURED_ADMINS: str = ""
-    GITHUB_APP_NAME: str = "dev-ai-agent-nagarro[bot]"
+    GITHUB_APP_NAME: str = ""
 
 
 class ReconConfig:
