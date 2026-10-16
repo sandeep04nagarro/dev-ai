@@ -13,11 +13,10 @@ phases:
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
   build:
     commands:
-      - docker build -t $REPOSITORY_URI:openswe-$CODEBUILD_RESOLVED_SOURCE_VERSION -t $REPOSITORY_URI:openswe-latest .
+      - docker build -t $REPOSITORY_URI:openswe-$CODEBUILD_RESOLVED_SOURCE_VERSION .
   post_build:
     commands:
       - docker push $REPOSITORY_URI:openswe-$CODEBUILD_RESOLVED_SOURCE_VERSION
-      - docker push $REPOSITORY_URI:openswe-latest
       - mkdir -p dist/scripts
       - echo "$REPOSITORY_URI:openswe-$CODEBUILD_RESOLVED_SOURCE_VERSION" > dist/image_uri.txt
       - cp appspec.yml dist/appspec.yml
