@@ -67,6 +67,7 @@ from .tools import (
     slack_read_thread_messages,
     slack_thread_reply,
     web_search,
+    refresh_github_token,
 )
 from .utils.auth import resolve_github_token
 from .utils.authorship import resolve_triggering_user_identity
@@ -605,6 +606,7 @@ async def get_agent(config: RunnableConfig) -> Pregel:
             create_prs=always_create_prs,
         ),
         tools=[
+            refresh_github_token,
             github_reply_to_review_thread,
             github_resolve_review_thread,
             http_request,
