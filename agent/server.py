@@ -56,6 +56,7 @@ from .tools import (
     github_resolve_review_thread,
     http_request,
     jira_comment,
+    refresh_github_token,
     # linear_comment,
     # linear_create_issue,
     # linear_delete_issue,
@@ -605,6 +606,7 @@ async def get_agent(config: RunnableConfig) -> Pregel:
             create_prs=always_create_prs,
         ),
         tools=[
+            refresh_github_token,
             github_reply_to_review_thread,
             github_resolve_review_thread,
             http_request,
