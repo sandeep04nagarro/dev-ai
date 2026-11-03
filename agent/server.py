@@ -56,6 +56,7 @@ from .tools import (
     github_resolve_review_thread,
     http_request,
     jira_comment,
+    refresh_github_token,
     # linear_comment,
     # linear_create_issue,
     # linear_delete_issue,
@@ -67,7 +68,6 @@ from .tools import (
     slack_read_thread_messages,
     slack_thread_reply,
     web_search,
-    refresh_github_token,
 )
 from .utils.auth import resolve_github_token
 from .utils.authorship import resolve_triggering_user_identity
