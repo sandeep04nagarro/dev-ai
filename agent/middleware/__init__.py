@@ -77,7 +77,7 @@ def build_server_middleware_list(
         # reach the Docker sandbox. Returns an error ToolMessage so the LLM
         # can self-correct; DockerSandbox.execute() is a second backstop.
         CommandSafetyMiddleware(),
-        BranchEnforcementMiddleware(),
+        # BranchEnforcementMiddleware(),
         PRTitleEnforcementMiddleware(),
         # --- Existing tool/state hygiene ------------------------------------
         SanitizeToolInputsMiddleware(),
