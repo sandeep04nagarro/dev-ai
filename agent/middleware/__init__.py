@@ -2,7 +2,7 @@ from typing import Any
 
 from langchain.agents.middleware import ModelCallLimitMiddleware
 
-from agent.middleware.branch_enforcement import BranchEnforcementMiddleware
+# from agent.middleware.branch_enforcement import BranchEnforcementMiddleware
 from agent.middleware.callback_metadata_logger import MetadataLoggerHandler
 from agent.middleware.check_message_queue import check_message_queue_before_model
 from agent.middleware.command_safety import CommandSafetyMiddleware
@@ -79,7 +79,7 @@ def build_server_middleware_list(
         CommandSafetyMiddleware(),
         # Removed BranchEnforcementMiddleware to prevent the latest run
         # from ending early.
-        # comment back in once the run succeeds
+        # uncomment back, once the run succeeds
         # BranchEnforcementMiddleware(),
         PRTitleEnforcementMiddleware(),
         # --- Existing tool/state hygiene ------------------------------------
